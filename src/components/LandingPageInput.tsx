@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { examplePrompts } from "@/examples/prompts";
 import { useImageAttachments } from "@/hooks/useImageAttachments";
-import { MODELS, type ModelId } from "@/types/generation";
+import { ASPECT_RATIOS, MODELS, type AspectRatio, type ModelId } from "@/types/generation";
 import {
   ArrowUp,
   BarChart3,
@@ -40,6 +40,7 @@ interface LandingPageInputProps {
     prompt: string,
     model: ModelId,
     attachedImages?: string[],
+    aspectRatio?: AspectRatio,
   ) => void;
   isNavigating?: boolean;
   showCodeExamplesLink?: boolean;
@@ -52,6 +53,7 @@ export function LandingPageInput({
 }: LandingPageInputProps) {
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState<ModelId>("gpt-5.2:low");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const {
     attachedImages,
     isDragging,
@@ -82,6 +84,7 @@ export function LandingPageInput({
       prompt,
       model,
       attachedImages.length > 0 ? attachedImages : undefined,
+      aspectRatio,
     );
   };
 
@@ -166,6 +169,28 @@ export function LandingPageInput({
             onChange={handleFileSelect}
             className="hidden"
           />
+
+          {/* Aspect ratio selector */}
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
+            <span className="text-xs text-muted-foreground">Ratio</span>
+            <div className="flex gap-1">
+              {ASPECT_RATIOS.map((ar) => (
+                <button
+                  key={ar.id}
+                  type="button"
+                  onClick={() => setAspectRatio(ar.id)}
+                  disabled={isNavigating}
+                  className={`px-2.5 py-1 rounded text-xs border transition-colors ${
+                    aspectRatio === ar.id
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border text-muted-foreground hover:border-primary/50"
+                  }`}
+                >
+                  {ar.id}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="flex justify-between items-center mt-3 pt-3 border-t border-border">
             <Select

@@ -1,46 +1,45 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
-import type { NextPage } from "next";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { AnimationPlayer } from "../../components/AnimationPlayer";
-import { ChatSidebar, type ChatSidebarRef } from "../../components/ChatSidebar";
-import { CodeEditor } from "../../components/CodeEditor";
-import { PageLayout } from "../../components/PageLayout";
-import { TabPanel } from "../../components/TabPanel";
-import { examples } from "../../examples/code";
-import { useAnimationState } from "../../hooks/useAnimationState";
-import { useAutoCorrection } from "../../hooks/useAutoCorrection";
-import { useConversationState } from "../../hooks/useConversationState";
-import { useSupabaseHistory } from "../../hooks/useSupabaseHistory";
+import { AnimationPlayer } from "@/components/AnimationPlayer";
+import { ChatSidebar, type ChatSidebarRef } from "@/components/ChatSidebar";
+import { CodeEditor } from "@/components/CodeEditor";
+import { PageLayout } from "@/components/PageLayout";
+import { TabPanel } from "@/components/TabPanel";
+import { examples } from "@/examples/code";
+import { useAnimationState } from "@/hooks/useAnimationState";
+import { useAutoCorrection } from "@/hooks/useAutoCorrection";
+import { useConversationState } from "@/hooks/useConversationState";
+import { useSessionHistory } from "@/hooks/useSessionHistory";
+import { supabase } from "@/lib/supabase";
 import type {
   AssistantMetadata,
   EditOperation,
   ErrorCorrectionContext,
-} from "../../types/conversation";
-import type { GenerationErrorType, StreamPhase } from "../../types/generation";
+} from "@/types/conversation";
+import type { AspectRatio, GenerationErrorType, ModelId, StreamPhase } from "@/types/generation";
+import { Loader2 } from "lucide-react";
+import type { NextPage } from "next";
+import { useParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 const MAX_CORRECTION_ATTEMPTS = 3;
+const PENDING_PROMPT_KEY = "session_pending_prompt";
+const PENDING_MODEL_KEY = "session_pending_model";
+const PENDING_IMAGES_KEY = "session_pending_images";
+const PENDING_ASPECT_RATIO_KEY = "session_pending_aspect_ratio";
 
-function GeneratePageContent() {
-  const searchParams = useSearchParams();
-  const initialPrompt = searchParams.get("prompt") || "";
-
-  // If we have an initial prompt from URL, start in streaming state
-  // so syntax highlighting is disabled from the beginning
-  const willAutoStart = Boolean(initialPrompt);
+function VideoPageContent() {
+  const params = useParams();
+  const sessionId = params.sessionId as string;
 
   const [durationInFrames, setDurationInFrames] = useState(
     examples[0]?.durationInFrames || 150,
   );
   const [fps, setFps] = useState(examples[0]?.fps || 30);
   const [currentFrame, setCurrentFrame] = useState(0);
-  const [isStreaming, setIsStreaming] = useState(willAutoStart);
-  const [streamPhase, setStreamPhase] = useState<StreamPhase>(
-    willAutoStart ? "reasoning" : "idle",
-  );
-  const [prompt, setPrompt] = useState(initialPrompt);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamPhase, setStreamPhase] = useState<StreamPhase>("idle");
+  const [prompt, setPrompt] = useState("");
   const [hasAutoStarted, setHasAutoStarted] = useState(false);
   const [hasGeneratedOnce, setHasGeneratedOnce] = useState(false);
   const [generationError, setGenerationError] = useState<{
@@ -48,12 +47,16 @@ function GeneratePageContent() {
     type: GenerationErrorType;
     failedEdit?: EditOperation;
   } | null>(null);
-
-  // Self-correction state
   const [errorCorrection, setErrorCorrection] =
     useState<ErrorCorrectionContext | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sessionModel, setSessionModel] = useState<ModelId | undefined>(undefined);
+  // Initialize directly from sessionStorage so new sessions start at the right ratio immediately
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(() => {
+    if (typeof window === "undefined") return "16:9";
+    return (sessionStorage.getItem(PENDING_ASPECT_RATIO_KEY) as AspectRatio) || "16:9";
+  });
 
-  // Conversation state for follow-up edits
   const {
     messages,
     hasManualEdits,
@@ -62,6 +65,7 @@ function GeneratePageContent() {
     addAssistantMessage,
     addErrorMessage,
     markManualEdit,
+    initializeFromSnapshots,
     getFullContext,
     getPreviouslyUsedSkills,
     getLastUserAttachedImages,
@@ -70,8 +74,16 @@ function GeneratePageContent() {
     isFirstGeneration,
   } = useConversationState();
 
-  // Sidebar collapse state
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const {
+    snapshots,
+    isLoaded,
+    latestCode,
+    canUndo,
+    canRedo,
+    saveSnapshot,
+    undo,
+    redo,
+  } = useSessionHistory(sessionId);
 
   const {
     code,
@@ -80,24 +92,16 @@ function GeneratePageContent() {
     isCompiling,
     setCode,
     compileCode,
-  } = useAnimationState(examples[0]?.code || "");
+  } = useAnimationState("");
 
-  const { canUndo, canRedo, isLoaded: historyLoaded, latestCode, saveSnapshot, undo, redo } =
-    useSupabaseHistory();
-
-  // Runtime errors from the Player (e.g., "cannot access variable before initialization")
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
-
-  // Combined error for display - either compilation or runtime error
   const codeError = compilationError || runtimeError;
 
-  // Refs
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isStreamingRef = useRef(isStreaming);
   const codeRef = useRef(code);
   const chatSidebarRef = useRef<ChatSidebarRef>(null);
 
-  // Auto-correction hook - use combined code error (compilation + runtime)
   const { markAsAiGenerated, markAsUserEdited } = useAutoCorrection({
     maxAttempts: MAX_CORRECTION_ATTEMPTS,
     compilationError: codeError,
@@ -111,11 +115,8 @@ function GeneratePageContent() {
       (correctionPrompt: string, context: ErrorCorrectionContext) => {
         setErrorCorrection(context);
         setPrompt(correctionPrompt);
-        // Get attached images from the last user message to include in retry
         const lastImages = getLastUserAttachedImages();
         setTimeout(() => {
-          // Use silent mode to avoid showing retry as a user message
-          // Include images from the last user message so image-based requests can be retried
           chatSidebarRef.current?.triggerGeneration({
             silent: true,
             attachedImages: lastImages,
@@ -137,36 +138,78 @@ function GeneratePageContent() {
   useEffect(() => {
     const wasStreaming = isStreamingRef.current;
     isStreamingRef.current = isStreaming;
-
-    // Compile when streaming ends - mark as AI change
     if (wasStreaming && !isStreaming) {
       markAsAiGenerated();
       compileCode(codeRef.current);
     }
   }, [isStreaming, compileCode, markAsAiGenerated]);
 
+  // Load session metadata on mount
+  useEffect(() => {
+    supabase
+      .from("sessions")
+      .select("model, aspect_ratio")
+      .eq("id", sessionId)
+      .single()
+      .then(({ data }) => {
+        if (data?.model) setSessionModel(data.model as ModelId);
+        if (data?.aspect_ratio) setAspectRatio(data.aspect_ratio as AspectRatio);
+      });
+  }, [sessionId]);
+
+  // Restore session or auto-generate once history is loaded
+  useEffect(() => {
+    if (!isLoaded || hasAutoStarted) return;
+    setHasAutoStarted(true);
+
+    if (latestCode && snapshots.length > 0) {
+      // Restore previous session
+      initializeFromSnapshots(snapshots);
+      setCode(latestCode);
+      compileCode(latestCode);
+      setHasGeneratedOnce(true);
+      return;
+    }
+
+    // New session — read pending prompt/settings from sessionStorage
+    const pendingPrompt = sessionStorage.getItem(PENDING_PROMPT_KEY);
+    const pendingImages = sessionStorage.getItem(PENDING_IMAGES_KEY);
+    const pendingAspectRatio = sessionStorage.getItem(PENDING_ASPECT_RATIO_KEY) as AspectRatio | null;
+    sessionStorage.removeItem(PENDING_PROMPT_KEY);
+    sessionStorage.removeItem(PENDING_MODEL_KEY);
+    sessionStorage.removeItem(PENDING_IMAGES_KEY);
+    sessionStorage.removeItem(PENDING_ASPECT_RATIO_KEY);
+
+    if (pendingAspectRatio) {
+      setAspectRatio(pendingAspectRatio);
+    }
+
+    if (pendingPrompt) {
+      setPrompt(pendingPrompt);
+      let storedImages: string[] | undefined;
+      if (pendingImages) {
+        try {
+          storedImages = JSON.parse(pendingImages);
+        } catch {
+          // ignore
+        }
+      }
+      setTimeout(() => {
+        chatSidebarRef.current?.triggerGeneration({ attachedImages: storedImages });
+      }, 100);
+    }
+  }, [isLoaded, hasAutoStarted, latestCode, snapshots, initializeFromSnapshots, setCode, compileCode]);
+
   const handleCodeChange = useCallback(
     (newCode: string) => {
       setCode(newCode);
       setHasGeneratedOnce(true);
-
-      // Mark as manual edit if not streaming (user typing)
       if (!isStreamingRef.current) {
         markManualEdit(newCode);
         markAsUserEdited();
       }
-
-      // Clear existing debounce
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-
-      // Skip compilation while streaming - will compile when streaming ends
-      if (isStreamingRef.current) {
-        return;
-      }
-
-      // Set new debounce
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (isStreamingRef.current) return;
       debounceRef.current = setTimeout(() => {
         compileCode(newCode);
       }, 500);
@@ -174,7 +217,6 @@ function GeneratePageContent() {
     [setCode, compileCode, markManualEdit, markAsUserEdited],
   );
 
-  // Handle message sent for history
   const handleMessageSent = useCallback(
     (promptText: string, attachedImages?: string[]) => {
       addUserMessage(promptText, attachedImages);
@@ -182,20 +224,12 @@ function GeneratePageContent() {
     [addUserMessage],
   );
 
-  // Handle generation complete for history
   const handleGenerationComplete = useCallback(
     (generatedCode: string, summary?: string, metadata?: AssistantMetadata) => {
-      const content =
-        summary || "Generated your animation, any follow up edits?";
+      const content = summary || "Generated your animation, any follow up edits?";
       addAssistantMessage(content, generatedCode, metadata);
       markAsAiGenerated();
-      // Persist snapshot to Supabase for undo history
-      saveSnapshot(
-        generatedCode,
-        prompt,
-        summary || "",
-        metadata?.skills ?? [],
-      );
+      saveSnapshot(generatedCode, prompt, summary || "", metadata?.skills ?? []);
     },
     [addAssistantMessage, markAsAiGenerated, saveSnapshot, prompt],
   );
@@ -216,82 +250,35 @@ function GeneratePageContent() {
     }
   }, [redo, setCode, compileCode]);
 
-  // Cleanup debounce on unmount
   useEffect(() => {
     return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
   const handleStreamingChange = useCallback((streaming: boolean) => {
     setIsStreaming(streaming);
-    // Clear errors when starting a new generation
     if (streaming) {
       setGenerationError(null);
       setRuntimeError(null);
-      // Reset error correction state for fresh retry attempts
       setErrorCorrection(null);
     }
   }, []);
 
   const handleError = useCallback(
-    (
-      message: string,
-      type: GenerationErrorType,
-      failedEdit?: EditOperation,
-    ) => {
+    (message: string, type: GenerationErrorType, failedEdit?: EditOperation) => {
       setGenerationError({ message, type, failedEdit });
     },
     [],
   );
 
-  // Handle runtime errors from the Player (e.g., "cannot access variable before initialization")
   const handleRuntimeError = useCallback((errorMessage: string) => {
-    // Set runtime error - this will be combined with compilation errors via codeError
-    // The useAutoCorrection hook will pick this up via the compilationError prop
     setRuntimeError(errorMessage);
   }, []);
-
-  // Auto-trigger generation if prompt came from URL — but only after history is loaded
-  useEffect(() => {
-    if (!initialPrompt || hasAutoStarted || !chatSidebarRef.current) return;
-    // Wait until Supabase history check is complete
-    if (!historyLoaded) return;
-
-    setHasAutoStarted(true);
-
-    // If a previous session was restored, load its latest code instead of re-generating
-    if (latestCode) {
-      setCode(latestCode);
-      compileCode(latestCode);
-      setHasGeneratedOnce(true);
-      return;
-    }
-
-    // No prior session — generate fresh
-    const storedImagesJson = sessionStorage.getItem("initialAttachedImages");
-    let storedImages: string[] | undefined;
-    if (storedImagesJson) {
-      try {
-        storedImages = JSON.parse(storedImagesJson);
-      } catch {
-        // Ignore parse errors
-      }
-      sessionStorage.removeItem("initialAttachedImages");
-    }
-    setTimeout(() => {
-      chatSidebarRef.current?.triggerGeneration({
-        attachedImages: storedImages,
-      });
-    }, 100);
-  }, [initialPrompt, hasAutoStarted, historyLoaded, latestCode, setCode, compileCode]);
 
   return (
     <PageLayout showLogoAsLink>
       <div className="flex-1 flex flex-col min-[1000px]:flex-row min-w-0 overflow-hidden">
-        {/* Chat History Sidebar */}
         <ChatSidebar
           ref={chatSidebarRef}
           messages={messages}
@@ -299,7 +286,6 @@ function GeneratePageContent() {
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           hasManualEdits={hasManualEdits}
-          // Generation props for embedded input
           onCodeGenerated={handleCodeChange}
           onStreamingChange={handleStreamingChange}
           onStreamPhaseChange={setStreamPhase}
@@ -316,14 +302,14 @@ function GeneratePageContent() {
           errorCorrection={errorCorrection ?? undefined}
           onPendingMessage={setPendingMessage}
           onClearPendingMessage={clearPendingMessage}
-          // Frame capture props
           Component={Component}
           fps={fps}
           durationInFrames={durationInFrames}
           currentFrame={currentFrame}
+          defaultModel={sessionModel}
+          aspectRatio={aspectRatio}
         />
 
-        {/* Main content area */}
         <div className="flex-1 flex flex-col min-w-0 pr-12 pb-8 overflow-hidden">
           <TabPanel
             codeContent={
@@ -352,6 +338,8 @@ function GeneratePageContent() {
                 code={code}
                 onRuntimeError={handleRuntimeError}
                 onFrameChange={setCurrentFrame}
+                aspectRatio={aspectRatio}
+                onAspectRatioChange={setAspectRatio}
               />
             }
           />
@@ -369,12 +357,12 @@ function LoadingFallback() {
   );
 }
 
-const GeneratePage: NextPage = () => {
+const VideoPage: NextPage = () => {
   return (
     <Suspense fallback={<LoadingFallback />}>
-      <GeneratePageContent />
+      <VideoPageContent />
     </Suspense>
   );
 };
 
-export default GeneratePage;
+export default VideoPage;

@@ -5,6 +5,7 @@ import type {
   ConversationState,
   EditOperation,
 } from "@/types/conversation";
+import type { CodeSnapshot } from "@/lib/supabase";
 import { useCallback, useRef, useState } from "react";
 
 export function useConversationState() {
@@ -101,6 +102,42 @@ export function useConversationState() {
     });
   }, []);
 
+  // Reconstruct conversation messages from Supabase snapshots (for session restore)
+  const initializeFromSnapshots = useCallback((snapshots: CodeSnapshot[]) => {
+    const messages: ConversationMessage[] = [];
+    for (const snapshot of snapshots) {
+      if (snapshot.prompt) {
+        messages.push({
+          id: `user-${snapshot.id}`,
+          role: "user",
+          content: snapshot.prompt,
+          timestamp: new Date(snapshot.created_at).getTime(),
+        });
+      }
+      messages.push({
+        id: `assistant-${snapshot.id}`,
+        role: "assistant",
+        content: snapshot.summary || "Generated animation",
+        timestamp: new Date(snapshot.created_at).getTime(),
+        codeSnapshot: snapshot.code,
+        metadata: {
+          skills: snapshot.skills || [],
+          editType: "full_replacement",
+        },
+      });
+    }
+    const lastSnapshot = snapshots[snapshots.length - 1];
+    if (lastSnapshot) {
+      lastAiCodeRef.current = lastSnapshot.code;
+    }
+    setState({
+      messages,
+      hasManualEdits: false,
+      lastGenerationTimestamp: Date.now(),
+      pendingMessage: undefined,
+    });
+  }, []);
+
   const setPendingMessage = useCallback((skills?: string[]) => {
     setState((prev) => ({
       ...prev,
@@ -166,6 +203,7 @@ export function useConversationState() {
     addErrorMessage,
     markManualEdit,
     clearConversation,
+    initializeFromSnapshots,
     getFullContext,
     getPreviouslyUsedSkills,
     getLastUserAttachedImages,

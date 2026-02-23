@@ -10,6 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ASPECT_RATIOS, type AspectRatio } from "@/types/generation";
 import { Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -18,6 +19,8 @@ interface SettingsModalProps {
   onDurationChange: (duration: number) => void;
   fps: number;
   onFpsChange: (fps: number) => void;
+  aspectRatio: AspectRatio;
+  onAspectRatioChange: (ar: AspectRatio) => void;
 }
 
 export function SettingsModal({
@@ -25,6 +28,8 @@ export function SettingsModal({
   onDurationChange,
   fps,
   onFpsChange,
+  aspectRatio,
+  onAspectRatioChange,
 }: SettingsModalProps) {
   const [open, setOpen] = useState(false);
   const [localDuration, setLocalDuration] = useState(String(durationInFrames));
@@ -74,6 +79,24 @@ export function SettingsModal({
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 py-4">
+          <div className="grid gap-4">
+            <h3 className="text-sm font-medium text-foreground">Aspect Ratio</h3>
+            <div className="flex gap-2">
+              {ASPECT_RATIOS.map((ar) => (
+                <button
+                  key={ar.id}
+                  onClick={() => onAspectRatioChange(ar.id)}
+                  className={`flex-1 py-2 px-3 rounded border text-sm transition-colors ${
+                    aspectRatio === ar.id
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border text-muted-foreground hover:border-primary/50"
+                  }`}
+                >
+                  {ar.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="grid gap-4">
             <h3 className="text-sm font-medium text-foreground">Animation</h3>
             <div className="grid grid-cols-2 gap-4">

@@ -9,6 +9,7 @@ import type {
   ErrorCorrectionContext,
 } from "@/types/conversation";
 import type {
+  AspectRatio,
   GenerationErrorType,
   ModelId,
   StreamPhase,
@@ -53,6 +54,7 @@ interface GenerationContext {
   hasManualEdits: boolean;
   errorCorrection?: ErrorCorrectionContext;
   frameImages?: string[];
+  aspectRatio?: AspectRatio;
 }
 
 interface UseGenerationApiReturn {
@@ -87,6 +89,7 @@ export function useGenerationApi(): UseGenerationApiReturn {
         hasManualEdits,
         errorCorrection,
         frameImages,
+        aspectRatio,
       } = context;
 
       const {
@@ -124,6 +127,7 @@ export function useGenerationApi(): UseGenerationApiReturn {
             hasManualEdits,
             errorCorrection,
             frameImages,
+            aspectRatio,
           }),
         });
 

@@ -4,6 +4,7 @@ import {
   SKILL_NAMES,
   type SkillName,
 } from "@/skills";
+import { ASPECT_RATIOS } from "@/types/generation";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject, streamText } from "ai";
 import { z } from "zod";
@@ -281,6 +282,8 @@ interface GenerateRequest {
   previouslyUsedSkills?: string[];
   /** Base64 image data URLs for visual context */
   frameImages?: string[];
+  /** Target aspect ratio for the composition */
+  aspectRatio?: string;
 }
 
 interface GenerateResponse {
@@ -305,7 +308,19 @@ export async function POST(req: Request) {
     errorCorrection,
     previouslyUsedSkills = [],
     frameImages,
+    aspectRatio = "16:9",
   }: GenerateRequest = await req.json();
+
+  const arConfig = ASPECT_RATIOS.find((ar) => ar.id === aspectRatio) ?? ASPECT_RATIOS[0];
+  const aspectRatioGuidance = `
+## COMPOSITION DIMENSIONS
+The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height}).
+- compositionWidth: ${arConfig.width}, compositionHeight: ${arConfig.height}
+- Design ALL layouts for this aspect ratio
+- For portrait (9:16): stack elements vertically, use full height, avoid wide horizontal layouts
+- For landscape (16:9): use horizontal space, center content with side padding
+- For square (1:1): balance content symmetrically
+`;
 
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -386,9 +401,13 @@ export async function POST(req: Request) {
 
   // Load skill-specific content only for NEW skills (previously used skills are already in context)
   const skillContent = getCombinedSkillContent(newSkills as SkillName[]);
-  const enhancedSystemPrompt = skillContent
-    ? `${SYSTEM_PROMPT}\n\n## SKILL-SPECIFIC GUIDANCE\n${skillContent}`
-    : SYSTEM_PROMPT;
+  const enhancedSystemPrompt = [
+    SYSTEM_PROMPT,
+    aspectRatioGuidance,
+    skillContent ? `## SKILL-SPECIFIC GUIDANCE\n${skillContent}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   // FOLLOW-UP MODE: Use non-streaming generateObject for faster edits
   if (isFollowUp && currentCode) {

@@ -3,6 +3,7 @@
 import { Player, type ErrorFallback, type PlayerRef } from "@remotion/player";
 import React, { useEffect, useRef } from "react";
 import { ErrorDisplay, type ErrorType } from "../ErrorDisplay";
+import { ASPECT_RATIOS, type AspectRatio } from "@/types/generation";
 import { RenderControls } from "./RenderControls";
 import { SettingsModal } from "./SettingsModal";
 
@@ -29,6 +30,8 @@ interface AnimationPlayerProps {
   fps: number;
   onDurationChange: (duration: number) => void;
   onFpsChange: (fps: number) => void;
+  aspectRatio?: AspectRatio;
+  onAspectRatioChange?: (ar: AspectRatio) => void;
   isCompiling: boolean;
   isStreaming: boolean;
   error: string | null;
@@ -44,6 +47,8 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
   fps,
   onDurationChange,
   onFpsChange,
+  aspectRatio = "16:9",
+  onAspectRatioChange,
   isCompiling,
   isStreaming,
   error,
@@ -52,6 +57,8 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
   onRuntimeError,
   onFrameChange,
 }) => {
+  const { width: compositionWidth, height: compositionHeight } =
+    ASPECT_RATIOS.find((ar) => ar.id === aspectRatio) ?? ASPECT_RATIOS[0];
   const playerRef = useRef<PlayerRef>(null);
 
   // Listen for runtime errors from the Player's error boundary
@@ -87,9 +94,17 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
   }, [onFrameChange, Component]);
 
   const renderContent = () => {
+    const aspectClass =
+      aspectRatio === "9:16"
+        ? "aspect-[9/16]"
+        : aspectRatio === "1:1"
+          ? "aspect-square"
+          : "aspect-video";
+    const placeholderClass = `w-full ${aspectClass} max-h-[calc(100%-80px)]`;
+
     if (isStreaming) {
       return (
-        <div className="w-full aspect-video max-h-[calc(100%-80px)] flex flex-col justify-center items-center gap-4 bg-background-elevated rounded-lg overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.5)]">
+        <div className={`${placeholderClass} flex flex-col justify-center items-center gap-4 bg-background-elevated rounded-lg overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.5)]`}>
           <div className="w-12 h-12 border-4 border-border border-t-primary rounded-full animate-spin" />
           <p className="text-muted-foreground text-sm">
             Waiting for code generation to finish...
@@ -100,7 +115,7 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
 
     if (isCompiling) {
       return (
-        <div className="w-full aspect-video max-h-[calc(100%-80px)] flex justify-center items-center bg-background-elevated rounded-lg overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.5)]">
+        <div className={`${placeholderClass} flex justify-center items-center bg-background-elevated rounded-lg overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.5)]`}>
           <div className="w-12 h-12 border-4 border-border border-t-primary rounded-full animate-spin" />
         </div>
       );
@@ -119,7 +134,7 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
 
     if (!Component) {
       return (
-        <div className="w-full aspect-video max-h-[calc(100%-80px)] flex justify-center items-center bg-background-elevated rounded-lg overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.5)] text-muted-foreground-dim text-lg font-sans">
+        <div className={`${placeholderClass} flex justify-center items-center bg-background-elevated rounded-lg overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.5)] text-muted-foreground-dim text-lg font-sans`}>
           Select an example to get started
         </div>
       );
@@ -127,15 +142,15 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
 
     return (
       <>
-        <div className="w-full aspect-video max-h-[calc(100%-80px)] rounded-lg overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.5)]">
+        <div className={`w-full ${aspectClass} max-h-[calc(100%-80px)] rounded-lg overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.5)]`}>
           <Player
             ref={playerRef}
-            key={Component.toString()}
+            key={`${Component.toString()}-${aspectRatio}`}
             component={Component}
             durationInFrames={durationInFrames}
             fps={fps}
-            compositionHeight={1080}
-            compositionWidth={1920}
+            compositionWidth={compositionWidth}
+            compositionHeight={compositionHeight}
             style={{
               width: "100%",
               height: "100%",
@@ -160,6 +175,8 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
             onDurationChange={onDurationChange}
             fps={fps}
             onFpsChange={onFpsChange}
+            aspectRatio={aspectRatio}
+            onAspectRatioChange={onAspectRatioChange ?? (() => {})}
           />
         </div>
       </>

@@ -12,6 +12,7 @@ import type {
 } from "@/types/conversation";
 import {
   MODELS,
+  type AspectRatio,
   type GenerationErrorType,
   type ModelId,
   type StreamPhase,
@@ -77,6 +78,8 @@ interface ChatSidebarProps {
   fps?: number;
   durationInFrames?: number;
   currentFrame?: number;
+  defaultModel?: ModelId;
+  aspectRatio?: AspectRatio;
 }
 
 export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(
@@ -107,10 +110,12 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(
       fps = 30,
       durationInFrames = 150,
       currentFrame = 0,
+      defaultModel,
+      aspectRatio,
     },
     ref,
   ) {
-    const [model, setModel] = useState<ModelId>(MODELS[1].id);
+    const [model, setModel] = useState<ModelId>(defaultModel ?? MODELS[1].id);
     const promptRef = useRef<string>("");
 
     const { isLoading, runGeneration } = useGenerationApi();
@@ -140,6 +145,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(
           hasManualEdits,
           errorCorrection,
           frameImages: options?.attachedImages,
+          aspectRatio,
         },
         {
           onCodeGenerated,

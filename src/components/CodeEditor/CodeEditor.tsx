@@ -29,6 +29,10 @@ interface CodeEditorProps {
   onChange: (value: string) => void;
   isStreaming?: boolean;
   streamPhase?: StreamPhase;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
@@ -36,6 +40,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   onChange,
   isStreaming = false,
   streamPhase = "idle",
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
 }) => {
   const monacoRef = useRef<Monaco | null>(null);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -271,7 +279,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   return (
     <div className="h-full flex flex-col min-w-0">
       <div className="flex-1 flex flex-col bg-background-editor rounded-lg overflow-hidden">
-        <EditorHeader filename="MyAnimation.tsx" code={code} />
+        <EditorHeader
+          filename="MyAnimation.tsx"
+          code={code}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={onUndo}
+          onRedo={onRedo}
+        />
         <div className="flex-1 overflow-hidden relative">
           <StreamingOverlay
             visible={isStreaming}

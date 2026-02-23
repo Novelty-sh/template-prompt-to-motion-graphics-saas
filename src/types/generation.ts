@@ -1,3 +1,11 @@
+export const ASPECT_RATIOS = [
+  { id: "16:9", label: "16:9 Landscape", width: 1920, height: 1080 },
+  { id: "9:16", label: "9:16 Portrait", width: 1080, height: 1920 },
+  { id: "1:1", label: "1:1 Square", width: 1080, height: 1080 },
+] as const;
+
+export type AspectRatio = (typeof ASPECT_RATIOS)[number]["id"];
+
 export const MODELS = [
   { id: "gpt-5.2:none", name: "GPT-5.2 (No Reasoning)" },
   { id: "gpt-5.2:low", name: "GPT-5.2 (Low Reasoning)" },
