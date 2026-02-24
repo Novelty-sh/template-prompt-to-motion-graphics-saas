@@ -354,12 +354,10 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
 
   const openai = createOpenAI({ apiKey });
 
-  // Bedrock provider — uses AWS credentials from env
+  // Bedrock provider — authenticates via Bearer token (AWS_BEARER_TOKEN_BEDROCK env var)
   const bedrock = createAmazonBedrock({
     region: process.env.AWS_REGION ?? "us-east-1",
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    sessionToken: process.env.AWS_SESSION_TOKEN, // Bearer token for temporary credentials
+    apiKey: process.env.AWS_BEARER_TOKEN_BEDROCK,
   });
 
   // Resolve the model instance to use for generation
