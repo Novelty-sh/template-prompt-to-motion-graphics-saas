@@ -119,9 +119,9 @@ export function useAutoCorrection({
     onClearErrorCorrection,
   ]);
 
-  // Handle generation/API errors
+  // Handle generation/API errors — only retry edit failures, never API-level errors
   useEffect(() => {
-    if (generationError && shouldAutoCorrect()) {
+    if (generationError && generationError.type !== "api" && shouldAutoCorrect()) {
       const nextAttempt = (errorCorrection?.attemptNumber ?? 0) + 1;
       console.log(
         `Auto-retry attempt ${nextAttempt}/${maxAttempts} for generation error:`,

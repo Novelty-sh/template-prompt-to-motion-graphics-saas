@@ -10,10 +10,11 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject, streamText } from "ai";
 import { z } from "zod";
 
-// Map friendly model IDs to actual AWS Bedrock model IDs
+// Map friendly model IDs to actual AWS Bedrock model IDs.
+// Verify these in your AWS Console → Bedrock → Model catalog if you get "invalid model identifier".
 const BEDROCK_MODEL_IDS: Record<string, string> = {
-  "claude-opus-4-6": "us.anthropic.claude-opus-4-6-v1:0",
-  "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6-v1:0",
+  "claude-opus-4-6": "us.anthropic.claude-opus-4-6-20251101-v1:0",
+  "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6-20251101-v1:0",
   "claude-sonnet-4-5": "us.anthropic.claude-sonnet-4-5-20251001-v1:0",
 };
 
@@ -361,8 +362,12 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
   });
 
   // Resolve the model instance to use for generation
+  const bedrockModelId = BEDROCK_MODEL_IDS[modelName] ?? modelName;
+  if (isBedrock) {
+    console.log("Using Bedrock model ID:", bedrockModelId, "(verify in AWS Console → Bedrock → Model catalog)");
+  }
   const generationModel = isBedrock
-    ? bedrock(BEDROCK_MODEL_IDS[modelName] ?? modelName)
+    ? bedrock(bedrockModelId)
     : openai(modelName);
 
   // Validate the prompt first (skip for follow-ups with existing code)
