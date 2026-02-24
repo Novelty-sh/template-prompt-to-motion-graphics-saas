@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -188,15 +191,31 @@ export function ChatInput({
                 <SelectValue className="truncate" />
               </SelectTrigger>
               <SelectContent className="bg-background-elevated border-border">
-                {MODELS.map((m) => (
-                  <SelectItem
-                    key={m.id}
-                    value={m.id}
-                    className="text-foreground focus:bg-secondary focus:text-foreground text-xs"
-                  >
-                    {m.name}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-muted-foreground px-2 py-1">OpenAI</SelectLabel>
+                  {MODELS.filter((m) => m.group === "OpenAI").map((m) => (
+                    <SelectItem
+                      key={m.id}
+                      value={m.id}
+                      className="text-foreground focus:bg-secondary focus:text-foreground text-xs"
+                    >
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectSeparator />
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-muted-foreground px-2 py-1">Claude (Bedrock)</SelectLabel>
+                  {MODELS.filter((m) => m.group === "Claude").map((m) => (
+                    <SelectItem
+                      key={m.id}
+                      value={m.id}
+                      className="text-foreground focus:bg-secondary focus:text-foreground text-xs"
+                    >
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
 

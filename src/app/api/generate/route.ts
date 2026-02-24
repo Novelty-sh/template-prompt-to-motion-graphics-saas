@@ -5,9 +5,17 @@ import {
   type SkillName,
 } from "@/skills";
 import { ASPECT_RATIOS } from "@/types/generation";
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject, streamText } from "ai";
 import { z } from "zod";
+
+// Map friendly model IDs to actual AWS Bedrock model IDs
+const BEDROCK_MODEL_IDS: Record<string, string> = {
+  "claude-opus-4-6": "us.anthropic.claude-opus-4-6-v1:0",
+  "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6-v1:0",
+  "claude-sonnet-4-5": "us.anthropic.claude-sonnet-4-5-20251001-v1:0",
+};
 
 const VALIDATION_PROMPT = `You are a prompt classifier for a motion graphics generation tool.
 
@@ -337,10 +345,27 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
     );
   }
 
+  // Detect provider from model ID prefix
+  const isBedrock = model.startsWith("bedrock:");
+  const modelKey = isBedrock ? model.slice("bedrock:".length) : model;
+
   // Parse model ID - format can be "model-name" or "model-name:reasoning_effort"
-  const [modelName, reasoningEffort] = model.split(":");
+  const [modelName, reasoningEffort] = modelKey.split(":");
 
   const openai = createOpenAI({ apiKey });
+
+  // Bedrock provider — uses AWS credentials from env
+  const bedrock = createAmazonBedrock({
+    region: process.env.AWS_REGION ?? "us-east-1",
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    sessionToken: process.env.AWS_SESSION_TOKEN, // Bearer token for temporary credentials
+  });
+
+  // Resolve the model instance to use for generation
+  const generationModel = isBedrock
+    ? bedrock(BEDROCK_MODEL_IDS[modelName] ?? modelName)
+    : openai(modelName);
 
   // Validate the prompt first (skip for follow-ups with existing code)
   if (!isFollowUp) {
@@ -529,7 +554,7 @@ Analyze the request and decide: use targeted edits (type: "edit") for small chan
       ];
 
       const editResult = await generateObject({
-        model: openai(modelName),
+        model: generationModel,
         system: FOLLOW_UP_SYSTEM_PROMPT,
         messages: editMessages,
         schema: FollowUpResponseSchema,
@@ -632,10 +657,10 @@ Analyze the request and decide: use targeted edits (type: "edit") for small chan
     ];
 
     const result = streamText({
-      model: openai(modelName),
+      model: generationModel,
       system: enhancedSystemPrompt,
       messages: initialMessages,
-      ...(reasoningEffort && {
+      ...(reasoningEffort && !isBedrock && {
         providerOptions: {
           openai: {
             reasoningEffort: reasoningEffort,
