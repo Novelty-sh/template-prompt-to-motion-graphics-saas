@@ -1,58 +1,41 @@
-import {
-  AwsRegion,
-  renderMediaOnLambda,
-  RenderMediaOnLambdaOutput,
-  speculateFunctionName,
-} from "@remotion/lambda/client";
-import {
-  DISK,
-  RAM,
-  REGION,
-  SITE_NAME,
-  TIMEOUT,
-} from "../../../../../config.mjs";
 import { COMP_NAME } from "../../../../../types/constants";
-import { RenderRequest } from "../../../../../types/schema";
-import { executeApi } from "../../../../helpers/api-response";
+import { ASPECT_RATIOS } from "../../../../types/generation";
+import { NextResponse } from "next/server";
 
-export const POST = executeApi<RenderMediaOnLambdaOutput, typeof RenderRequest>(
-  RenderRequest,
-  async (req, body) => {
-    if (
-      !process.env.AWS_ACCESS_KEY_ID &&
-      !process.env.REMOTION_AWS_ACCESS_KEY_ID
-    ) {
-      throw new TypeError(
-        "Set up Remotion Lambda to render videos. See the README.md for how to do so.",
-      );
-    }
-    if (
-      !process.env.AWS_SECRET_ACCESS_KEY &&
-      !process.env.REMOTION_AWS_SECRET_ACCESS_KEY
-    ) {
-      throw new TypeError(
-        "The environment variable REMOTION_AWS_SECRET_ACCESS_KEY is missing. Add it to your .env file.",
-      );
-    }
+export async function POST(req: Request) {
+  const backendUrl = process.env.REMOTION_BACKEND_URL;
+  if (!backendUrl) {
+    return NextResponse.json(
+      { type: "error", message: "REMOTION_BACKEND_URL is not set." },
+      { status: 500 },
+    );
+  }
 
-    const result = await renderMediaOnLambda({
-      codec: "h264",
-      functionName: speculateFunctionName({
-        diskSizeInMb: DISK,
-        memorySizeInMb: RAM,
-        timeoutInSeconds: TIMEOUT,
-      }),
-      region: REGION as AwsRegion,
-      serveUrl: SITE_NAME,
-      composition: COMP_NAME,
+  const body = await req.json();
+
+  const arConfig = ASPECT_RATIOS.find((ar) => ar.id === body.aspectRatio) ?? ASPECT_RATIOS[0];
+
+  const res = await fetch(`${backendUrl}/render`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      compositionId: COMP_NAME,
       inputProps: body.inputProps,
-      framesPerLambda: 60,
-      downloadBehavior: {
-        type: "download",
-        fileName: "video.mp4",
-      },
-    });
+      codec: "h264",
+      siteName: "novelty-saas",
+      forceWidth: arConfig.width,
+      forceHeight: arConfig.height,
+    }),
+  });
 
-    return result;
-  },
-);
+  if (!res.ok) {
+    const text = await res.text();
+    return NextResponse.json(
+      { type: "error", message: `Render backend error: ${text}` },
+      { status: res.status },
+    );
+  }
+
+  const data = await res.json();
+  return NextResponse.json({ type: "success", data });
+}

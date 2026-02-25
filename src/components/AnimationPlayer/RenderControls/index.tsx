@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import type { AspectRatio } from "@/types/generation";
 import { Download } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useRendering } from "../../../helpers/use-rendering";
@@ -12,11 +13,13 @@ export const RenderControls: React.FC<{
   code: string;
   durationInFrames: number;
   fps: number;
-}> = ({ code, durationInFrames, fps }) => {
+  aspectRatio: AspectRatio;
+}> = ({ code, durationInFrames, fps, aspectRatio }) => {
   const { renderMedia, state, undo } = useRendering({
     code,
     durationInFrames,
     fps,
+    aspectRatio,
   });
   const previousPropsRef = useRef({ code, durationInFrames, fps });
 

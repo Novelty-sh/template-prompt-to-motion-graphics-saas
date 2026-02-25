@@ -1,44 +1,55 @@
-import {
-  AwsRegion,
-  getRenderProgress,
-  speculateFunctionName,
-} from "@remotion/lambda/client";
-import { DISK, RAM, REGION, TIMEOUT } from "../../../../../config.mjs";
-import { ProgressRequest, ProgressResponse } from "../../../../../types/schema";
-import { executeApi } from "../../../../helpers/api-response";
+import type { ProgressResponse } from "../../../../../types/schema";
+import { NextResponse } from "next/server";
 
-export const POST = executeApi<ProgressResponse, typeof ProgressRequest>(
-  ProgressRequest,
-  async (req, body) => {
-    const renderProgress = await getRenderProgress({
+export async function POST(req: Request) {
+  const backendUrl = process.env.REMOTION_BACKEND_URL;
+  if (!backendUrl) {
+    return NextResponse.json(
+      { type: "error", message: "REMOTION_BACKEND_URL is not set." },
+      { status: 500 },
+    );
+  }
+
+  const body = await req.json();
+
+  const res = await fetch(`${backendUrl}/progress`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       bucketName: body.bucketName,
-      functionName: speculateFunctionName({
-        diskSizeInMb: DISK,
-        memorySizeInMb: RAM,
-        timeoutInSeconds: TIMEOUT,
-      }),
-      region: REGION as AwsRegion,
       renderId: body.id,
-    });
+    }),
+  });
 
-    if (renderProgress.fatalErrorEncountered) {
-      return {
-        type: "error",
-        message: renderProgress.errors[0].message,
-      };
-    }
+  if (!res.ok) {
+    const text = await res.text();
+    return NextResponse.json(
+      { type: "error", message: `Progress backend error: ${text}` },
+      { status: res.status },
+    );
+  }
 
-    if (renderProgress.done) {
-      return {
-        type: "done",
-        url: renderProgress.outputFile as string,
-        size: renderProgress.outputSizeInBytes as number,
-      };
-    }
+  // Backend returns { type: "success", data: { type: "in-progress"|"done"|"error", ... } }
+  // Unwrap and normalize to internal ProgressResponse format
+  const response = await res.json();
+  const raw = response?.data ?? response;
 
-    return {
-      type: "progress",
-      progress: Math.max(0.03, renderProgress.overallProgress),
+  let normalized: ProgressResponse;
+
+  if (raw.type === "in-progress") {
+    normalized = { type: "progress", progress: raw.overallProgress ?? 0 };
+  } else if (raw.type === "done") {
+    normalized = {
+      type: "done",
+      url: raw.outputFile,
+      size: raw.outputSizeInBytes ?? 0,
     };
-  },
-);
+  } else if (raw.type === "error") {
+    normalized = { type: "error", message: raw.error ?? raw.message ?? "Render failed" };
+  } else {
+    // Unexpected shape — surface as error so the loop terminates
+    normalized = { type: "error", message: `Unexpected progress response: ${JSON.stringify(raw)}` };
+  }
+
+  return NextResponse.json({ type: "success", data: normalized });
+}

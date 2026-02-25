@@ -16,6 +16,7 @@ import type {
   EditOperation,
   ErrorCorrectionContext,
 } from "@/types/conversation";
+import { clearPendingImages, pendingImages as homePendingImages } from "@/app/page";
 import type { AspectRatio, GenerationErrorType, ModelId, StreamPhase } from "@/types/generation";
 import { Loader2 } from "lucide-react";
 import type { NextPage } from "next";
@@ -25,7 +26,6 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 const MAX_CORRECTION_ATTEMPTS = 3;
 const PENDING_PROMPT_KEY = "session_pending_prompt";
 const PENDING_MODEL_KEY = "session_pending_model";
-const PENDING_IMAGES_KEY = "session_pending_images";
 const PENDING_ASPECT_RATIO_KEY = "session_pending_aspect_ratio";
 
 function VideoPageContent() {
@@ -171,13 +171,13 @@ function VideoPageContent() {
       return;
     }
 
-    // New session — read pending prompt/settings from sessionStorage
+    // New session — read pending prompt/settings from sessionStorage + in-memory images
     const pendingPrompt = sessionStorage.getItem(PENDING_PROMPT_KEY);
-    const pendingImages = sessionStorage.getItem(PENDING_IMAGES_KEY);
     const pendingAspectRatio = sessionStorage.getItem(PENDING_ASPECT_RATIO_KEY) as AspectRatio | null;
+    const storedImages = homePendingImages;
+    clearPendingImages();
     sessionStorage.removeItem(PENDING_PROMPT_KEY);
     sessionStorage.removeItem(PENDING_MODEL_KEY);
-    sessionStorage.removeItem(PENDING_IMAGES_KEY);
     sessionStorage.removeItem(PENDING_ASPECT_RATIO_KEY);
 
     if (pendingAspectRatio) {
@@ -186,14 +186,6 @@ function VideoPageContent() {
 
     if (pendingPrompt) {
       setPrompt(pendingPrompt);
-      let storedImages: string[] | undefined;
-      if (pendingImages) {
-        try {
-          storedImages = JSON.parse(pendingImages);
-        } catch {
-          // ignore
-        }
-      }
       setTimeout(() => {
         chatSidebarRef.current?.triggerGeneration({ attachedImages: storedImages });
       }, 100);

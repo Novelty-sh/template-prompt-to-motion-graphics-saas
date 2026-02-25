@@ -68,6 +68,12 @@ interface UseGenerationApiReturn {
   ) => Promise<void>;
 }
 
+/** Replace the __BASE_FRAME__ placeholder with the actual base64 image data URL. */
+function injectBaseFrame(code: string, frameImages: string[] | undefined): string {
+  if (!frameImages?.length || !code.includes('"__BASE_FRAME__"')) return code;
+  return code.replace('"__BASE_FRAME__"', `"${frameImages[0]}"`);
+}
+
 export function useGenerationApi(): UseGenerationApiReturn {
   const [isLoading, setIsLoading] = useState(false);
 
@@ -153,7 +159,8 @@ export function useGenerationApi(): UseGenerationApiReturn {
         // Handle JSON response (non-streaming, for follow-up edits)
         if (contentType.includes("application/json")) {
           const data = await response.json();
-          const { code, summary, metadata } = data;
+          const { summary, metadata } = data;
+          const code = injectBaseFrame(data.code, frameImages);
           onCodeGenerated?.(code);
           onGenerationComplete?.(code, summary, metadata);
           const validation = validateGptResponse(code);
@@ -217,6 +224,7 @@ export function useGenerationApi(): UseGenerationApiReturn {
 
         let finalCode = stripMarkdownFences(accumulatedText);
         finalCode = extractComponentCode(finalCode);
+        finalCode = injectBaseFrame(finalCode, frameImages);
         onCodeGenerated?.(finalCode);
         onClearPendingMessage?.();
         onGenerationComplete?.(

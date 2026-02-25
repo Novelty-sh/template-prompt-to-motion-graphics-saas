@@ -12,8 +12,11 @@ import { useState } from "react";
 
 const PENDING_PROMPT_KEY = "session_pending_prompt";
 const PENDING_MODEL_KEY = "session_pending_model";
-const PENDING_IMAGES_KEY = "session_pending_images";
 const PENDING_ASPECT_RATIO_KEY = "session_pending_aspect_ratio";
+
+// Images are too large for sessionStorage — keep in memory across client-side navigation
+export let pendingImages: string[] | undefined;
+export const clearPendingImages = () => { pendingImages = undefined; };
 
 function formatRelativeDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -53,11 +56,7 @@ const Home: NextPage = () => {
     sessionStorage.setItem(PENDING_PROMPT_KEY, prompt);
     sessionStorage.setItem(PENDING_MODEL_KEY, model);
     if (aspectRatio) sessionStorage.setItem(PENDING_ASPECT_RATIO_KEY, aspectRatio);
-    if (attachedImages && attachedImages.length > 0) {
-      sessionStorage.setItem(PENDING_IMAGES_KEY, JSON.stringify(attachedImages));
-    } else {
-      sessionStorage.removeItem(PENDING_IMAGES_KEY);
-    }
+    pendingImages = attachedImages && attachedImages.length > 0 ? attachedImages : undefined;
 
     router.push(`/videos/${sessionId}`);
   };

@@ -6,6 +6,7 @@ import {
 } from "@/skills";
 import { ASPECT_RATIOS } from "@/types/generation";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { createVertex } from "@ai-sdk/google-vertex";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject, streamText } from "ai";
 import { z } from "zod";
@@ -150,6 +151,70 @@ CRITICAL:
 
 ## PRESERVING USER EDITS
 If the user has made manual edits, preserve them unless explicitly asked to change.
+`;
+
+// Prompt to classify whether an image-backed request should use image_base or react_reconstruct mode
+const MODE_ROUTING_PROMPT = `You are classifying an animation request to determine the best approach for using a reference image.
+
+Two modes:
+- "image_base": Use the image as a static visual background and animate ON TOP of it without modifying image content.
+  Choose this for: zoom in/out, pan, spotlight, ken burns, highlight a region, adding overlay elements on top (text labels, arrows, new messages appearing, counters, badges).
+- "react_reconstruct": Recreate the full UI from the image as React/CSS code, giving full control over individual elements.
+  Choose this for: changing button colors, resizing UI elements, modifying text content, animating each element independently, applying brand variations, changing layout.
+
+Rule: if the request only needs visual camera-like effects or overlays on top of the image → "image_base". If it requires modifying or individually controlling existing UI elements → "react_reconstruct".`;
+
+// System prompt addendum injected when mode = image_base
+const IMAGE_BASE_SYSTEM_PROMPT = `## BASE FRAME MODE — Animating On Top of an Image
+
+The user has provided a UI design image as the visual foundation. Animate ON TOP of it — do NOT recreate the UI from scratch.
+
+### CRITICAL RULES
+1. Add \`Img\` to your remotion import: \`import { ..., Img } from "remotion";\`
+2. Declare the image src using this EXACT placeholder string (it will be replaced at runtime):
+   \`const BASE_FRAME_SRC = "__BASE_FRAME__";\`
+3. Render the base frame as the bottom layer, filling the entire composition:
+\`\`\`tsx
+<AbsoluteFill style={{ overflow: "hidden" }}>
+  <div style={{ width: "100%", height: "100%", transform: \`...\` }}>
+    <Img src={BASE_FRAME_SRC} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+  </div>
+</AbsoluteFill>
+\`\`\`
+4. Add animated overlay elements as siblings AFTER the base frame layer.
+5. NEVER try to reconstruct the UI from the image. Use it as-is.
+
+### ZOOM INTO A REGION
+Apply scale + translate on a wrapper div around the Img. Use percentage translate to move the focal point to center.
+Positive translateX shifts image right (shows left content); negative shifts left (shows right content).
+\`\`\`tsx
+const progress = spring({ frame, fps, config: { damping: 20, stiffness: 40 } });
+const scale = interpolate(progress, [0, 1], [1, 2.5]);
+const translateX = interpolate(progress, [0, 1], [0, -20]); // % — tune per region
+const translateY = interpolate(progress, [0, 1], [0, 15]);  // % — tune per region
+// wrapper div style:
+// transform: \`scale(\${scale}) translate(\${translateX}%, \${translateY}%)\`, transformOrigin: "center center"
+\`\`\`
+
+### SPOTLIGHT / HIGHLIGHT A REGION
+Use a semi-transparent dark overlay + bright border positioned at the target region using percentages.
+\`\`\`tsx
+const REGION = { top: "10%", left: "60%", width: "30%", height: "8%" };
+// Dark overlay
+<AbsoluteFill style={{ background: "rgba(0,0,0,0.55)", opacity: overlayOpacity }} />
+// Highlight ring
+<div style={{ position: "absolute", ...REGION, border: "3px solid #FFD700", borderRadius: 8, boxShadow: "0 0 24px #FFD700", opacity: ringOpacity }} />
+\`\`\`
+
+### KEN BURNS (slow zoom + subtle pan)
+\`\`\`tsx
+const progress = interpolate(frame, [0, durationInFrames], [0, 1], { extrapolateRight: "clamp" });
+const scale = interpolate(progress, [0, 1], [1, 1.12]);
+const translateX = interpolate(progress, [0, 1], [0, -2]);
+\`\`\`
+
+### ADD OVERLAY ELEMENT (e.g. new message appearing on top)
+Position new elements absolutely over approximate image coordinates using percentage-based values.
 `;
 
 // Schema for UI extraction from reference images
@@ -430,6 +495,11 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
 
   const openai = createOpenAI({ apiKey });
 
+  // Gemini via Vertex AI Express Mode — used for all vision tasks (image/video analysis)
+  const GEMINI_VISION_MODEL = "gemini-3.1-pro-preview";
+  const vertex = createVertex({ apiKey: process.env.GOOGLE_CLOUD_API_KEY });
+  const geminiVision = vertex(GEMINI_VISION_MODEL);
+
   // Bedrock provider — authenticates via Bearer token (AWS_BEARER_TOKEN_BEDROCK env var)
   const bedrock = createAmazonBedrock({
     region: process.env.AWS_REGION ?? "us-east-1",
@@ -445,10 +515,10 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
     ? bedrock(bedrockModelId)
     : openai(modelName);
 
-  // Run validation, skill detection, and UI extraction in parallel
+  // Run validation, skill detection, mode routing, and UI extraction in parallel
   const hasReferenceImages = !isFollowUp && frameImages && frameImages.length > 0;
 
-  const [validationResult, skillResult, uiExtractionResult] = await Promise.allSettled([
+  const [validationResult, skillResult, modeRoutingResult, uiExtractionResult] = await Promise.allSettled([
     // Validate prompt (skip for follow-ups)
     isFollowUp
       ? Promise.resolve(null)
@@ -467,10 +537,27 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
       schema: z.object({ skills: z.array(z.enum(SKILL_NAMES)) }),
     }).catch((e) => { console.error("Skill detection error:", e); return null; }),
 
-    // Extract UI spec from reference image (only for initial generation with images)
+    // Mode routing — classify image_base vs react_reconstruct when images are present
     hasReferenceImages
       ? generateObject({
           model: openai("gpt-5.2"),
+          system: MODE_ROUTING_PROMPT,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text" as const, text: `User request: "${prompt}"` },
+              { type: "image" as const, image: frameImages![0] },
+            ],
+          }],
+          schema: z.object({ mode: z.enum(["image_base", "react_reconstruct"]) }),
+        }).catch((e) => { console.error("Mode routing error:", e); return null; })
+      : Promise.resolve(null),
+
+    // Extract UI spec from reference image — uses Gemini for superior vision accuracy
+    // Result is only used when mode = react_reconstruct
+    hasReferenceImages
+      ? generateObject({
+          model: geminiVision,
           system: UI_EXTRACTION_PROMPT,
           messages: [{
             role: "user",
@@ -506,9 +593,21 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
     console.log("Detected skills:", detectedSkills);
   }
 
-  // Handle UI extraction result
+  // Handle mode routing result
+  let frameMode: "image_base" | "react_reconstruct" | null = null;
+  if (modeRoutingResult.status === "fulfilled" && modeRoutingResult.value) {
+    const mResult = modeRoutingResult.value as { object: { mode: "image_base" | "react_reconstruct" } };
+    frameMode = mResult.object.mode;
+    console.log("Frame mode:", frameMode);
+  }
+
+  // Build image-related system prompt section based on mode
   let uiSpecSection = "";
-  if (uiExtractionResult.status === "fulfilled" && uiExtractionResult.value) {
+  if (frameMode === "image_base") {
+    uiSpecSection = IMAGE_BASE_SYSTEM_PROMPT;
+    console.log("Using image_base mode");
+  } else if (uiExtractionResult.status === "fulfilled" && uiExtractionResult.value) {
+    // react_reconstruct (or no images): inject extracted UI spec
     const eResult = uiExtractionResult.value as { object: z.infer<typeof UISpecSchema> };
     uiSpecSection = formatUISpec(eResult.object);
     console.log("UI spec extracted for:", eResult.object.uiType);
@@ -794,6 +893,7 @@ Analyze the request and decide: use targeted edits (type: "edit") for small chan
     const metadataEvent = `data: ${JSON.stringify({
       type: "metadata",
       skills: detectedSkills,
+      frameMode,
     })}\n\n`;
 
     // Create a new stream that prepends metadata before the LLM stream

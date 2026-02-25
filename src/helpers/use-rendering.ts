@@ -1,3 +1,4 @@
+import type { AspectRatio } from "../types/generation";
 import { useCallback, useMemo, useState } from "react";
 import { z } from "zod";
 import { CompositionProps } from "../../types/constants";
@@ -35,7 +36,7 @@ const wait = async (milliSeconds: number) => {
   });
 };
 
-export const useRendering = (inputProps: z.infer<typeof CompositionProps>) => {
+export const useRendering = (inputProps: z.infer<typeof CompositionProps> & { aspectRatio: AspectRatio }) => {
   const [state, setState] = useState<State>({
     status: "init",
   });
@@ -45,7 +46,8 @@ export const useRendering = (inputProps: z.infer<typeof CompositionProps>) => {
       status: "invoking",
     });
     try {
-      const { renderId, bucketName } = await renderVideo({ inputProps });
+      const { aspectRatio, ...compositionProps } = inputProps;
+      const { renderId, bucketName } = await renderVideo({ inputProps: compositionProps, aspectRatio });
       setState({
         status: "rendering",
         progress: 0,
