@@ -11,11 +11,10 @@ import { generateObject, streamText } from "ai";
 import { z } from "zod";
 
 // Map friendly model IDs to actual AWS Bedrock model IDs.
-// Verify these in your AWS Console → Bedrock → Model catalog if you get "invalid model identifier".
 const BEDROCK_MODEL_IDS: Record<string, string> = {
-  "claude-opus-4-6": "us.anthropic.claude-opus-4-6-20251101-v1:0",
-  "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6-20251101-v1:0",
-  "claude-sonnet-4-5": "us.anthropic.claude-sonnet-4-5-20251001-v1:0",
+  "claude-opus-4-6": "us.anthropic.claude-opus-4-6-v1",
+  "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
+  "claude-sonnet-4-5": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
 };
 
 const VALIDATION_PROMPT = `You are a prompt classifier for a motion graphics generation tool.
@@ -112,6 +111,9 @@ NEVER use these as variable names - they shadow imports:
 - Output ONLY code - no explanations, no questions
 - Response must start with "import" and end with "};"
 - If prompt is ambiguous, make a reasonable choice - do not ask for clarification
+- NEVER reference a component that is not defined in the same file (e.g. <WebsiteScene>, <HeroSection>)
+- ALL helper components MUST be defined as const functions ABOVE the main export in the same file
+- The output must be entirely self-contained — one file, no missing definitions
 
 `;
 
@@ -150,6 +152,79 @@ CRITICAL:
 If the user has made manual edits, preserve them unless explicitly asked to change.
 `;
 
+// Schema for UI extraction from reference images
+const UISpecSchema = z.object({
+  uiType: z.string().describe("Type of UI: chat, dashboard, form, landing page, product card, etc."),
+  colors: z.object({
+    background: z.string().describe("Main background color as hex"),
+    surface: z.string().nullable().describe("Card or surface color as hex, null if not present"),
+    primary: z.string().nullable().describe("Primary brand/accent color as hex"),
+    text: z.string().describe("Primary text color as hex"),
+    textMuted: z.string().nullable().describe("Secondary/muted text color as hex"),
+    sentBubble: z.string().nullable().describe("Sent message bubble color for chat UIs, null otherwise"),
+    receivedBubble: z.string().nullable().describe("Received message bubble color for chat UIs, null otherwise"),
+    topBar: z.string().nullable().describe("Top navigation bar color if present"),
+    other: z.array(z.object({ name: z.string(), hex: z.string() })).describe("Any other notable colors"),
+  }),
+  typography: z.object({
+    fontStyle: z.string().describe("Font style observed: rounded/geometric, serif, monospace, system-ui"),
+    dominantWeight: z.string().describe("Dominant font weight: light, regular, medium, semibold, bold"),
+    relativeSizes: z.string().describe("Description of text size hierarchy, e.g. 'large header, medium body, small meta'"),
+  }),
+  layout: z.object({
+    borderRadiusStyle: z.string().describe("Border radius feel: sharp (0-2px), subtle (4-8px), rounded (12-18px), pill (999px)"),
+    spacing: z.string().describe("Spacing density: compact, comfortable, spacious"),
+    topBarPresent: z.boolean().describe("Whether a top navigation or header bar is visible"),
+    structure: z.string().describe("Brief layout description, e.g. 'header + scrollable chat + input bar at bottom'"),
+  }),
+  textContent: z.array(z.string()).describe("ALL visible text in the image in reading order — exact strings, do not paraphrase"),
+  replicationNotes: z.string().nullable().describe("Any other critical visual details needed to replicate this UI faithfully"),
+});
+
+const UI_EXTRACTION_PROMPT = `You are a pixel-accurate UI analyst. Your job is to extract exact visual properties from a UI screenshot so a developer can recreate it faithfully.
+
+Rules:
+- Sample colors as precisely as possible — provide exact hex values
+- List ALL visible text exactly as it appears, word for word
+- Do not guess or approximate brand colors — read them from the image
+- Describe layout structure clearly so it can be rebuilt without seeing the image`;
+
+function formatUISpec(spec: z.infer<typeof UISpecSchema>): string {
+  const colorLines = [
+    `  Background: ${spec.colors.background}`,
+    spec.colors.topBar ? `  Top bar: ${spec.colors.topBar}` : null,
+    spec.colors.surface ? `  Surface/card: ${spec.colors.surface}` : null,
+    spec.colors.primary ? `  Primary/accent: ${spec.colors.primary}` : null,
+    `  Text: ${spec.colors.text}`,
+    spec.colors.textMuted ? `  Text muted: ${spec.colors.textMuted}` : null,
+    spec.colors.sentBubble ? `  Sent bubble: ${spec.colors.sentBubble}` : null,
+    spec.colors.receivedBubble ? `  Received bubble: ${spec.colors.receivedBubble}` : null,
+    ...spec.colors.other.map((c) => `  ${c.name}: ${c.hex}`),
+  ].filter(Boolean);
+
+  return `## REFERENCE UI SPECIFICATION (extracted from uploaded image)
+REPLICATE THIS UI EXACTLY. Use ONLY the values below — do not substitute with defaults or guesses.
+
+UI Type: ${spec.uiType}
+
+Colors (use these exact hex values as your constants):
+${colorLines.join("\n")}
+
+Typography:
+  Style: ${spec.typography.fontStyle}
+  Weight: ${spec.typography.dominantWeight}
+  Sizes: ${spec.typography.relativeSizes}
+
+Layout:
+  Border radius: ${spec.layout.borderRadiusStyle}
+  Spacing: ${spec.layout.spacing}
+  Structure: ${spec.layout.structure}
+
+Text content (copy EXACTLY — do not change wording):
+${spec.textContent.map((t, i) => `  ${i + 1}. "${t}"`).join("\n")}
+${spec.replicationNotes ? `\nAdditional notes: ${spec.replicationNotes}` : ""}`;
+}
+
 // Schema for follow-up edit responses
 // Note: Using a flat object schema because OpenAI doesn't support discriminated unions
 const FollowUpResponseSchema = z.object({
@@ -177,15 +252,15 @@ const FollowUpResponseSchema = z.object({
         new_string: z.string().describe("The replacement string"),
       }),
     )
-    .optional()
+    .nullable()
     .describe(
-      "Required when type is 'edit': array of search-replace operations",
+      "Required when type is 'edit': array of search-replace operations. Null when type is 'full'.",
     ),
   code: z
     .string()
-    .optional()
+    .nullable()
     .describe(
-      "Required when type is 'full': the complete replacement code starting with imports",
+      "Required when type is 'full': the complete replacement code starting with imports. Null when type is 'edit'.",
     ),
 });
 
@@ -370,47 +445,73 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
     ? bedrock(bedrockModelId)
     : openai(modelName);
 
-  // Validate the prompt first (skip for follow-ups with existing code)
-  if (!isFollowUp) {
-    try {
-      const validationResult = await generateObject({
-        model: openai("gpt-5.2"),
-        system: VALIDATION_PROMPT,
-        prompt: `User prompt: "${prompt}"`,
-        schema: z.object({ valid: z.boolean() }),
-      });
+  // Run validation, skill detection, and UI extraction in parallel
+  const hasReferenceImages = !isFollowUp && frameImages && frameImages.length > 0;
 
-      if (!validationResult.object.valid) {
-        return new Response(
-          JSON.stringify({
-            error:
-              "No valid motion graphics prompt. Please describe an animation or visual content you'd like to create.",
-            type: "validation",
-          }),
-          { status: 400, headers: { "Content-Type": "application/json" } },
-        );
-      }
-    } catch (validationError) {
-      // On validation error, allow through rather than blocking
-      console.error("Validation error:", validationError);
-    }
-  }
+  const [validationResult, skillResult, uiExtractionResult] = await Promise.allSettled([
+    // Validate prompt (skip for follow-ups)
+    isFollowUp
+      ? Promise.resolve(null)
+      : generateObject({
+          model: openai("gpt-5.2"),
+          system: VALIDATION_PROMPT,
+          prompt: `User prompt: "${prompt}"`,
+          schema: z.object({ valid: z.boolean() }),
+        }).catch((e) => { console.error("Validation error:", e); return null; }),
 
-  // Detect which skills apply to this prompt
-  let detectedSkills: SkillName[] = [];
-  try {
-    const skillResult = await generateObject({
+    // Detect skills
+    generateObject({
       model: openai("gpt-5.2"),
       system: SKILL_DETECTION_PROMPT,
       prompt: `User prompt: "${prompt}"`,
-      schema: z.object({
-        skills: z.array(z.enum(SKILL_NAMES)),
-      }),
-    });
-    detectedSkills = skillResult.object.skills;
+      schema: z.object({ skills: z.array(z.enum(SKILL_NAMES)) }),
+    }).catch((e) => { console.error("Skill detection error:", e); return null; }),
+
+    // Extract UI spec from reference image (only for initial generation with images)
+    hasReferenceImages
+      ? generateObject({
+          model: openai("gpt-5.2"),
+          system: UI_EXTRACTION_PROMPT,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text" as const, text: "Extract the UI specification from this screenshot so I can animate it." },
+              { type: "image" as const, image: frameImages![0] },
+            ],
+          }],
+          schema: UISpecSchema,
+        }).catch((e) => { console.error("UI extraction error:", e); return null; })
+      : Promise.resolve(null),
+  ]);
+
+  // Handle validation result
+  if (!isFollowUp && validationResult.status === "fulfilled" && validationResult.value) {
+    const vResult = validationResult.value as { object: { valid: boolean } };
+    if (!vResult.object.valid) {
+      return new Response(
+        JSON.stringify({
+          error: "No valid motion graphics prompt. Please describe an animation or visual content you'd like to create.",
+          type: "validation",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
+
+  // Handle skill detection result
+  let detectedSkills: SkillName[] = [];
+  if (skillResult.status === "fulfilled" && skillResult.value) {
+    const sResult = skillResult.value as { object: { skills: SkillName[] } };
+    detectedSkills = sResult.object.skills;
     console.log("Detected skills:", detectedSkills);
-  } catch (skillError) {
-    console.error("Skill detection error:", skillError);
+  }
+
+  // Handle UI extraction result
+  let uiSpecSection = "";
+  if (uiExtractionResult.status === "fulfilled" && uiExtractionResult.value) {
+    const eResult = uiExtractionResult.value as { object: z.infer<typeof UISpecSchema> };
+    uiSpecSection = formatUISpec(eResult.object);
+    console.log("UI spec extracted for:", eResult.object.uiType);
   }
 
   // Filter out skills that were already used in the conversation to avoid redundant context
@@ -432,6 +533,7 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
   const enhancedSystemPrompt = [
     SYSTEM_PROMPT,
     aspectRatioGuidance,
+    uiSpecSection,
     skillContent ? `## SKILL-SPECIFIC GUIDANCE\n${skillContent}` : "",
   ]
     .filter(Boolean)
