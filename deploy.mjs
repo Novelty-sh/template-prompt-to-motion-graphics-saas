@@ -1,11 +1,9 @@
 import {
-  deployFunction,
   deploySite,
-  getOrCreateBucket,
 } from "@remotion/lambda";
 import dotenv from "dotenv";
 import path from "path";
-import { DISK, RAM, REGION, SITE_NAME, TIMEOUT } from "./config.mjs";
+import { REGION, SITE_NAME } from "./config.mjs";
 import { webpackOverride } from "./src/remotion/webpack-override.mjs";
 
 console.log("Selected region:", REGION);
@@ -35,30 +33,7 @@ if (
   process.exit(0);
 }
 
-process.stdout.write("Deploying Lambda function... ");
-
-const { functionName, alreadyExisted: functionAlreadyExisted } =
-  await deployFunction({
-    createCloudWatchLogGroup: true,
-    memorySizeInMb: RAM,
-    region: REGION,
-    timeoutInSeconds: TIMEOUT,
-    diskSizeInMb: DISK,
-  });
-console.log(
-  functionName,
-  functionAlreadyExisted ? "(already existed)" : "(created)",
-);
-
-process.stdout.write("Ensuring bucket... ");
-const { bucketName, alreadyExisted: bucketAlreadyExisted } =
-  await getOrCreateBucket({
-    region: REGION,
-  });
-console.log(
-  bucketName,
-  bucketAlreadyExisted ? "(already existed)" : "(created)",
-);
+const bucketName = "remotionlambda-apsouth1-fuz4jru0l4";
 
 process.stdout.write("Deploying site... ");
 const { siteName } = await deploySite({
