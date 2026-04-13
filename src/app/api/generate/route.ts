@@ -5,6 +5,9 @@ import {
   type SkillName,
 } from "@/skills";
 import { ASPECT_RATIOS } from "@/types/generation";
+import { editWithTextEditor } from "@/lib/anthropic-editor";
+import { uploadImages } from "@/lib/gcs-upload";
+import { analyzeImages } from "@/lib/image-analysis";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createVertex } from "@ai-sdk/google-vertex";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -629,11 +632,52 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
 
   // Load skill-specific content only for NEW skills (previously used skills are already in context)
   const skillContent = getCombinedSkillContent(newSkills as SkillName[]);
+  const hasTemplateSkill = detectedSkills.some((s) => s.startsWith("template-"));
+
+  // Upload + analyze attached images when template mode is active
+  let templateImageContext = "";
+  if (hasTemplateSkill && frameImages && frameImages.length > 0) {
+    try {
+      const sessionId = `session-${Date.now()}`;
+      const [uploaded, descriptions] = await Promise.all([
+        uploadImages(frameImages, sessionId),
+        analyzeImages(frameImages, geminiVision),
+      ]);
+
+      const imageLines = uploaded.map((img, i) => {
+        const desc = descriptions[i] || "Image";
+        return `${img.index}. ${img.url} — "${desc}"`;
+      });
+
+      templateImageContext = `## ATTACHED IMAGES
+The user attached ${uploaded.length} image(s). Use these permanent URLs directly in your code (with the Img component from remotion):
+${imageLines.join("\n")}
+
+Based on the user's prompt, decide how to use each image:
+- Portrait / face photo → assign to CONTACT_AVATAR_URL
+- Other photos → add as image messages in the MESSAGES array using the imageUrl field
+- Use your best judgment based on the image descriptions and the user's request`;
+
+      console.log("Uploaded template images:", uploaded.map((u) => u.url));
+    } catch (err) {
+      console.error("Template image upload/analysis failed:", err);
+      // Continue without images — template still works with text-only
+    }
+  }
+
   const enhancedSystemPrompt = [
     SYSTEM_PROMPT,
     aspectRatioGuidance,
     uiSpecSection,
-    skillContent ? `## SKILL-SPECIFIC GUIDANCE\n${skillContent}` : "",
+    skillContent
+      ? hasTemplateSkill
+        ? skillContent // Template content has its own headers
+        : `## SKILL-SPECIFIC GUIDANCE\n${skillContent}`
+      : "",
+    templateImageContext,
+    hasTemplateSkill
+      ? `## CRITICAL: TEMPLATE MODE\nA screen template is provided above. Your output MUST be the template code with ONLY the dynamic data section modified to match the user's prompt. Do not restructure the component or change the layout. Output ONLY the complete code starting with imports.`
+      : "",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -710,6 +754,54 @@ Focus ONLY on fixing the error. Do not make other changes.`;
         }
       }
 
+      console.log(
+        "Follow-up edit with prompt:",
+        prompt,
+        "model:",
+        modelName,
+        "skills:",
+        detectedSkills.length > 0 ? detectedSkills.join(", ") : "general",
+        frameImages && frameImages.length > 0
+          ? `(with ${frameImages.length} image(s))`
+          : "",
+      );
+
+      // ---------------------------------------------------------------
+      // Claude path: use native text editor tool via Anthropic API
+      // ---------------------------------------------------------------
+      if (isBedrock) {
+        console.log("Using Anthropic text editor tool for Claude model:", modelName);
+
+        const editorResult = await editWithTextEditor({
+          currentCode,
+          prompt,
+          systemPrompt: FOLLOW_UP_SYSTEM_PROMPT,
+          model: modelName,
+          conversationContext,
+          manualEditNotice,
+          errorCorrectionNotice,
+        });
+
+        const responseData: GenerateResponse = {
+          code: editorResult.code,
+          summary: editorResult.summary,
+          metadata: {
+            skills: detectedSkills,
+            editType: editorResult.editType,
+            edits: editorResult.edits,
+            model: modelName,
+          },
+        };
+
+        return new Response(JSON.stringify(responseData), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // ---------------------------------------------------------------
+      // OpenAI path: structured output with generateObject
+      // ---------------------------------------------------------------
       const editPromptText = `## CURRENT CODE:
 \`\`\`tsx
 ${currentCode}
@@ -723,18 +815,6 @@ ${prompt}
 ${frameImages && frameImages.length > 0 ? `\n(See the attached ${frameImages.length === 1 ? "image" : "images"} for visual reference)` : ""}
 
 Analyze the request and decide: use targeted edits (type: "edit") for small changes, or full replacement (type: "full") for major restructuring.`;
-
-      console.log(
-        "Follow-up edit with prompt:",
-        prompt,
-        "model:",
-        modelName,
-        "skills:",
-        detectedSkills.length > 0 ? detectedSkills.join(", ") : "general",
-        frameImages && frameImages.length > 0
-          ? `(with ${frameImages.length} image(s))`
-          : "",
-      );
 
       // Build messages array - include images if provided
       const editMessageContent: Array<

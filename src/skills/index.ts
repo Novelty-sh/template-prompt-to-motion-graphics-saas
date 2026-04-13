@@ -1,14 +1,21 @@
+import fs from "fs";
+import path from "path";
 import { examples } from "@/examples/code";
+import { templates } from "@/templates";
 
-// Import markdown files at build time
-import threeDSkill from "./3d.md";
-import chartsSkill from "./charts.md";
-import messagingSkill from "./messaging.md";
-import sequencingSkill from "./sequencing.md";
-import socialMediaSkill from "./social-media.md";
-import springPhysicsSkill from "./spring-physics.md";
-import transitionsSkill from "./transitions.md";
-import typographySkill from "./typography.md";
+// Read markdown skill files at runtime (server-side only)
+const skillsDir = path.join(process.cwd(), "src", "skills");
+const readSkill = (filename: string) =>
+  fs.readFileSync(path.join(skillsDir, filename), "utf-8");
+
+const threeDSkill = readSkill("3d.md");
+const chartsSkill = readSkill("charts.md");
+const messagingSkill = readSkill("messaging.md");
+const sequencingSkill = readSkill("sequencing.md");
+const socialMediaSkill = readSkill("social-media.md");
+const springPhysicsSkill = readSkill("spring-physics.md");
+const transitionsSkill = readSkill("transitions.md");
+const typographySkill = readSkill("typography.md");
 
 // Guidance skills (markdown files with patterns/rules)
 const GUIDANCE_SKILLS = [
@@ -35,7 +42,13 @@ const EXAMPLE_SKILLS = [
   "example-word-carousel",
 ] as const;
 
-export const SKILL_NAMES = [...GUIDANCE_SKILLS, ...EXAMPLE_SKILLS] as const;
+// Template skills (complete screen layouts with dynamic data slots)
+const TEMPLATE_SKILLS = [
+  "template-whatsapp-chat",
+  "template-whatsapp-chat-light",
+] as const;
+
+export const SKILL_NAMES = [...GUIDANCE_SKILLS, ...EXAMPLE_SKILLS, ...TEMPLATE_SKILLS] as const;
 
 export type SkillName = (typeof SKILL_NAMES)[number];
 
@@ -64,7 +77,43 @@ const exampleIdMap: Record<(typeof EXAMPLE_SKILLS)[number], string> = {
   "example-word-carousel": "word-carousel",
 };
 
+// Map template skill names to template IDs
+const templateIdMap: Record<(typeof TEMPLATE_SKILLS)[number], string> = {
+  "template-whatsapp-chat": "whatsapp-chat",
+  "template-whatsapp-chat-light": "whatsapp-chat-light",
+};
+
 export function getSkillContent(skillName: SkillName): string {
+  // Handle template skills - return complete template with instructions
+  if (skillName.startsWith("template-")) {
+    const templateId =
+      templateIdMap[skillName as (typeof TEMPLATE_SKILLS)[number]];
+    const template = templates.find((t) => t.id === templateId);
+    if (template) {
+      const guidelinesSection = template.guidelines
+        ? `\n### Visual Guidelines\n${template.guidelines}\n`
+        : "";
+      return `## SCREEN TEMPLATE: ${template.name}
+
+You MUST use this template as your base. Do NOT create this UI from scratch.
+
+### Instructions
+1. Copy the template code below EXACTLY
+2. Replace ONLY the DYNAMIC DATA section based on the user's prompt
+3. Generate realistic, natural messages/content based on what the user asked for
+4. Keep all TEMPLATE CONSTANTS and layout JSX unchanged unless the user specifically asks to modify them
+${guidelinesSection}
+### Dynamic Data Contract
+${template.dynamicDataContract}
+
+### Template Code
+\`\`\`tsx
+${template.code}
+\`\`\``;
+    }
+    return "";
+  }
+
   // Handle example skills - return the code directly
   if (skillName.startsWith("example-")) {
     const exampleId =
@@ -117,5 +166,11 @@ Code examples (complete working references):
 - example-gold-price-chart: bar chart with Y-axis labels, monthly data, staggered animations
 - example-typewriter-highlight: typewriter effect with cursor blink, pause, and word highlight
 - example-word-carousel: rotating words with crossfade and blur transitions
+
+Screen templates (complete UI layouts — use the template code as-is, only fill in dynamic data):
+- template-whatsapp-chat: WhatsApp dark theme chat, dark mode WhatsApp, dark background chat
+- template-whatsapp-chat-light: WhatsApp light theme chat, WhatsApp mobile, WhatsApp white theme, standard WhatsApp. This is the DEFAULT WhatsApp template — use this unless the user specifically asks for dark theme.
+
+IMPORTANT: When a template matches, ALWAYS include it. Templates take priority — if the user asks for a "WhatsApp chat", include the appropriate template even if other categories also match. Only include ONE template (not both). Default to light theme unless dark is requested.
 
 Return an array of matching category names. Return an empty array if none apply.`;
