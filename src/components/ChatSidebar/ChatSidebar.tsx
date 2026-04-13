@@ -79,6 +79,7 @@ interface ChatSidebarProps {
   durationInFrames?: number;
   currentFrame?: number;
   defaultModel?: ModelId;
+  onModelChange?: (model: ModelId) => void;
   aspectRatio?: AspectRatio;
 }
 
@@ -111,14 +112,26 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(
       durationInFrames = 150,
       currentFrame = 0,
       defaultModel,
+      onModelChange: onModelChangeProp,
       aspectRatio,
     },
     ref,
   ) {
-    const [model, setModel] = useState<ModelId>(defaultModel ?? MODELS[1].id);
+    const [model, setModelState] = useState<ModelId>(defaultModel ?? MODELS[1].id);
+    const setModel = (m: ModelId) => {
+      setModelState(m);
+      onModelChangeProp?.(m);
+    };
     const promptRef = useRef<string>("");
 
     const { isLoading, runGeneration } = useGenerationApi();
+
+    // Sync model state when defaultModel prop changes (e.g. loaded from Supabase or sessionStorage)
+    useEffect(() => {
+      if (defaultModel) {
+        setModel(defaultModel);
+      }
+    }, [defaultModel]);
 
     // Keep prompt ref in sync for use in triggerGeneration
     useEffect(() => {

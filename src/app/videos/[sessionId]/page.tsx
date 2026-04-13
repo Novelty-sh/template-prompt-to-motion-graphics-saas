@@ -173,12 +173,17 @@ function VideoPageContent() {
 
     // New session — read pending prompt/settings from sessionStorage + in-memory images
     const pendingPrompt = sessionStorage.getItem(PENDING_PROMPT_KEY);
+    const pendingModel = sessionStorage.getItem(PENDING_MODEL_KEY) as ModelId | null;
     const pendingAspectRatio = sessionStorage.getItem(PENDING_ASPECT_RATIO_KEY) as AspectRatio | null;
     const storedImages = homePendingImages;
     clearPendingImages();
     sessionStorage.removeItem(PENDING_PROMPT_KEY);
     sessionStorage.removeItem(PENDING_MODEL_KEY);
     sessionStorage.removeItem(PENDING_ASPECT_RATIO_KEY);
+
+    if (pendingModel) {
+      setSessionModel(pendingModel);
+    }
 
     if (pendingAspectRatio) {
       setAspectRatio(pendingAspectRatio);
@@ -191,6 +196,14 @@ function VideoPageContent() {
       }, 100);
     }
   }, [isLoaded, hasAutoStarted, latestCode, snapshots, initializeFromSnapshots, setCode, compileCode]);
+
+  const handleModelChange = useCallback(
+    (model: ModelId) => {
+      setSessionModel(model);
+      supabase.from("sessions").update({ model }).eq("id", sessionId);
+    },
+    [sessionId],
+  );
 
   const handleCodeChange = useCallback(
     (newCode: string) => {
@@ -299,6 +312,7 @@ function VideoPageContent() {
           durationInFrames={durationInFrames}
           currentFrame={currentFrame}
           defaultModel={sessionModel}
+          onModelChange={handleModelChange}
           aspectRatio={aspectRatio}
         />
 
