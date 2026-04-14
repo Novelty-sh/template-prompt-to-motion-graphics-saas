@@ -96,7 +96,36 @@ import { slide } from "@remotion/transitions/slide";
 import { Circle, Rect, Triangle, Star, Ellipse, Pie } from "@remotion/shapes";
 import { ThreeCanvas } from "@remotion/three";
 import { useState, useEffect } from "react";
+import { Emoji, getEmojiUrl, renderTextWithEmoji } from "@/lib/twemoji";
 \`\`\`
+
+## EMOJI RENDERING (CRITICAL)
+
+NEVER render emoji as raw text characters (e.g. "😀") — they look different on every OS and break on server rendering.
+ALWAYS use Twemoji for consistent rendering.
+
+### For text strings that may contain emoji (chat messages, labels, etc.):
+\`\`\`tsx
+// renderTextWithEmoji auto-detects and replaces emoji in a string:
+<span>{renderTextWithEmoji("Great job 🔥", fontSize)}</span>
+<span>{renderTextWithEmoji(msg.text, fontSize)}</span>
+\`\`\`
+
+### For standalone emoji (decorative, icons, etc.):
+\`\`\`tsx
+<Emoji emoji="👋🏽" size={32} />
+\`\`\`
+
+### For URLs (background-image, etc.):
+\`\`\`tsx
+const url = getEmojiUrl("⭐");
+\`\`\`
+
+Rules:
+- For any text content that might contain emoji, use \`renderTextWithEmoji(text, emojiSize)\`
+- For standalone emoji display, use \`<Emoji emoji="..." size={N} />\`
+- Default emoji size is 20px — pass the surrounding fontSize for proper scaling
+- Supports all emoji including skin tones, flags, and ZWJ sequences
 
 ## RESERVED NAMES (CRITICAL)
 

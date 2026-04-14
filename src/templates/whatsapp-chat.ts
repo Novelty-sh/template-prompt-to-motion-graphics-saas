@@ -1,6 +1,7 @@
 import type { ScreenTemplate } from "./index";
 
 export const whatsappChatCode = `import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring, interpolate, Img, Sequence } from "remotion";
+import { Emoji, renderTextWithEmoji } from "@/lib/twemoji";
 
 export const MyAnimation = () => {
   const frame = useCurrentFrame();
@@ -155,7 +156,7 @@ export const MyAnimation = () => {
                   {msg.imageUrl && (
                     <Img src={msg.imageUrl} style={{ width: "100%", borderRadius: Math.round(8 * scale), marginBottom: msg.text ? Math.round(6 * scale) : 0, display: "block" }} />
                   )}
-                  {msg.text && <span style={{ color: COLOR_TEXT, fontSize, lineHeight: 1.4, wordBreak: "break-word", padding: msg.imageUrl ? \`0 \${Math.round(8 * scale)}px\` : undefined }}>{msg.text}</span>}
+                  {msg.text && <span style={{ color: COLOR_TEXT, fontSize, lineHeight: 1.4, wordBreak: "break-word", padding: msg.imageUrl ? \`0 \${Math.round(8 * scale)}px\` : undefined }}>{renderTextWithEmoji(msg.text, fontSize)}</span>}
                   <span style={{
                     color: COLOR_TIME, fontSize: Math.round(11 * scale), marginLeft: Math.round(8 * scale),
                     float: "right", marginTop: Math.round(4 * scale), display: "flex", alignItems: "center", gap: Math.round(3 * scale),

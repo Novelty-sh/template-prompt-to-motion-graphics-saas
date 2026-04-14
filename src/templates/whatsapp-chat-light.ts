@@ -1,6 +1,7 @@
 import type { ScreenTemplate } from "./index";
 
 export const whatsappChatLightCode = `import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring, interpolate, Img, Sequence } from "remotion";
+import { Emoji, renderTextWithEmoji } from "@/lib/twemoji";
 
 export const MyAnimation = () => {
   const frame = useCurrentFrame();
@@ -194,7 +195,7 @@ export const MyAnimation = () => {
             backgroundColor: "#ffeed4", borderRadius: Math.round(6 * scale), padding: \`\${Math.round(6 * scale)}px \${Math.round(10 * scale)}px\`,
             fontSize: Math.round(12 * scale), color: "#54656f", lineHeight: 1.45,
           }}>
-            \u{1F512} Messages and calls are end-to-end encrypted. Tap to learn more.
+            {renderTextWithEmoji("\u{1F512} Messages and calls are end-to-end encrypted. Tap to learn more.", Math.round(12 * scale))}
           </div>
 
           {/* Date pill */}
@@ -257,7 +258,7 @@ export const MyAnimation = () => {
                       )}
                       {msg.text && (
                         <span style={{ fontSize, color: COLOR_TEXT, lineHeight: 1.35, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
-                          {msg.text}
+                          {renderTextWithEmoji(msg.text, fontSize)}
                         </span>
                       )}
                       <span style={{

@@ -23,6 +23,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import * as THREE from "three";
+import { Emoji, getEmojiUrl, renderTextWithEmoji } from "../lib/twemoji";
 
 export interface CompilationResult {
   Component: React.ComponentType | null;
@@ -150,6 +151,10 @@ export function compileCode(code: string): CompilationResult {
       "wipe",
       "flip",
       "clockWipe",
+      // Twemoji
+      "Emoji",
+      "getEmojiUrl",
+      "renderTextWithEmoji",
       wrappedCode,
     );
 
@@ -196,6 +201,10 @@ export function compileCode(code: string): CompilationResult {
       wipe,
       flip,
       clockWipe,
+      // Twemoji
+      Emoji,
+      getEmojiUrl,
+      renderTextWithEmoji,
     );
 
     if (typeof Component !== "function") {

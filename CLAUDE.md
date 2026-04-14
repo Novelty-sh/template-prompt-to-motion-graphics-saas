@@ -73,6 +73,7 @@ Generated code is compiled client-side. The compiler injects these APIs as funct
 - **Shapes**: `Rect`, `Circle`, `Triangle`, `Star`, `Polygon`, `Ellipse`, `Heart`, `Pie` (plus `make*` path variants)
 - **Transitions**: `TransitionSeries`, `linearTiming`, `springTiming`, `fade`, `slide`, `wipe`, `flip`, `clockWipe`
 - **3D**: `ThreeCanvas`, `THREE`
+- **Emoji**: `Emoji`, `getEmojiUrl`, `renderTextWithEmoji` (Twemoji — consistent cross-platform emoji rendering via CDN SVGs)
 - **Other**: `Lottie`, `React`, `useState`, `useEffect`, `useMemo`, `useRef`
 
 When adding new APIs to generated code, they must be added in three places: the compiler's `new Function()` parameter list, the corresponding argument in the call, and the system prompt guidance.
@@ -102,6 +103,21 @@ Follow-up edits are non-streaming (single JSON response).
 ### Lambda Rendering
 
 Video rendering happens via an external Remotion backend (`REMOTION_BACKEND_URL`). Endpoints at `src/app/api/lambda/render/` (trigger) and `src/app/api/lambda/progress/` (poll). Config in `config.mjs`.
+
+**Lambda site (`novelty-saas`)** is a separately bundled and deployed Remotion site on AWS S3 (`remotionlambda-apsouth1-fuz4jru0l4`, region `ap-south-1`). It is NOT part of the Next.js/Vercel deployment — it has its own webpack bundle via `deploy.mjs`.
+
+**CRITICAL: After changing any code that runs inside Remotion compositions, you MUST redeploy the Lambda site:**
+```bash
+npm run deploy   # Bundles current code and uploads to S3 as novelty-saas
+```
+
+This applies to changes in:
+- `src/remotion/compiler.ts` (injected APIs, compilation logic)
+- `src/remotion/DynamicComp.tsx` (composition wrapper)
+- Any module imported by the above (e.g. `src/lib/twemoji.ts`)
+- `config.mjs` (Lambda config)
+
+**Import rule for `src/remotion/` files**: The Lambda bundler uses its own webpack config (not Next.js), so `@/` path aliases do NOT resolve. Always use **relative imports** (e.g. `../lib/twemoji`) in files under `src/remotion/`. Preview (Next.js dev server) resolves `@/` fine, but Lambda rendering will fail without relative paths.
 
 ## Environment Variables
 
