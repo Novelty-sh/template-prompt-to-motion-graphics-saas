@@ -127,6 +127,10 @@ export function useGenerationApi(): UseGenerationApiReturn {
             err instanceof Error ? err.message : "Failed to upload images";
           onError?.(msg, "api");
           onErrorMessage?.(`Image upload failed: ${msg}`, "api");
+          setIsLoading(false);
+          onStreamingChange?.(false);
+          onStreamPhaseChange?.("idle");
+          onClearPendingMessage?.();
           return;
         }
       }

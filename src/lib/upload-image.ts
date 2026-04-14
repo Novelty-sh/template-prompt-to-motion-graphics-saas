@@ -93,20 +93,24 @@ async function uploadOne(
 
 /**
  * Upload an array of base64 images to GCS in parallel via presigned URLs.
+ * Images that are already URLs (from a previous upload) are passed through as-is.
  * Returns array of public URLs in the same order.
  */
 export async function uploadImagesToGCS(
-  base64Images: string[],
+  images: string[],
   sessionId: string,
 ): Promise<string[]> {
   const timestamp = Date.now();
 
   return Promise.all(
-    base64Images.map(async (dataUrl, i) => {
-      const { contentType } = dataUrlToBlob(dataUrl);
+    images.map(async (img, i) => {
+      // Already a URL (e.g. from conversation history) — skip upload
+      if (img.startsWith("http")) return img;
+
+      const { contentType } = dataUrlToBlob(img);
       const ext = extFromContentType(contentType);
       const filePath = `motion-graphics/images/${sessionId}/${timestamp}-${i + 1}.${ext}`;
-      return uploadOne(dataUrl, filePath);
+      return uploadOne(img, filePath);
     }),
   );
 }
