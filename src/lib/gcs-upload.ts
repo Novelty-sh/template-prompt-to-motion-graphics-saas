@@ -24,11 +24,20 @@ interface ServiceAccountKey {
 let _cachedToken: { token: string; expiresAt: number } | null = null;
 
 function loadServiceAccount(): ServiceAccountKey {
-  const keyPath = process.env.GCS_SERVICE_ACCOUNT_KEY_PATH;
-  if (!keyPath) {
-    throw new Error("GCS_SERVICE_ACCOUNT_KEY_PATH is not set.");
+  // Prefer inline JSON (for Vercel / serverless), fall back to file path (for local dev)
+  const keyJson = process.env.GCS_SERVICE_ACCOUNT_KEY;
+  if (keyJson) {
+    return JSON.parse(keyJson);
   }
-  return JSON.parse(fs.readFileSync(keyPath, "utf-8"));
+
+  const keyPath = process.env.GCS_SERVICE_ACCOUNT_KEY_PATH;
+  if (keyPath) {
+    return JSON.parse(fs.readFileSync(keyPath, "utf-8"));
+  }
+
+  throw new Error(
+    "Neither GCS_SERVICE_ACCOUNT_KEY nor GCS_SERVICE_ACCOUNT_KEY_PATH is set.",
+  );
 }
 
 function createSignedJwt(sa: ServiceAccountKey): string {
