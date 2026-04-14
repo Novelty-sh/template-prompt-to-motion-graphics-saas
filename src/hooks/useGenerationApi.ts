@@ -3,6 +3,7 @@ import {
   stripMarkdownFences,
   validateGptResponse,
 } from "@/helpers/sanitize-response";
+import { uploadImagesToGCS } from "@/lib/upload-image";
 import type {
   AssistantMetadata,
   ConversationContextMessage,
@@ -114,9 +115,26 @@ export function useGenerationApi(): UseGenerationApiReturn {
       onStreamingChange?.(true);
       onStreamPhaseChange?.("reasoning");
 
+      // Upload images to GCS first so we send URLs instead of base64
+      let imageUrls: string[] | undefined;
+      if (frameImages && frameImages.length > 0) {
+        try {
+          const sessionId = `session-${Date.now()}`;
+          imageUrls = await uploadImagesToGCS(frameImages, sessionId);
+        } catch (err) {
+          console.error("Image upload failed:", err);
+          const msg =
+            err instanceof Error ? err.message : "Failed to upload images";
+          onError?.(msg, "api");
+          onErrorMessage?.(`Image upload failed: ${msg}`, "api");
+          return;
+        }
+      }
+
       // Only add user message if not a silent retry
+      // Use CDN URLs for chat history so payloads stay small on future requests
       if (!options?.silent) {
-        onMessageSent?.(prompt, frameImages);
+        onMessageSent?.(prompt, imageUrls ?? frameImages);
       }
 
       try {
@@ -132,26 +150,43 @@ export function useGenerationApi(): UseGenerationApiReturn {
             isFollowUp,
             hasManualEdits,
             errorCorrection,
-            frameImages,
+            frameImages: imageUrls ?? frameImages,
             aspectRatio,
           }),
         });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          const errorMessage =
-            errorData.error || `API error: ${response.status}`;
-          if (errorData.type === "edit_failed") {
-            onError?.(errorMessage, "validation", errorData.failedEdit);
-            onErrorMessage?.(errorMessage, "edit_failed", errorData.failedEdit);
-            return;
+          // Handle non-JSON error responses (e.g. Vercel 413 HTML page)
+          let errorData: Record<string, string> = {};
+          const errContentType = response.headers.get("content-type") || "";
+          if (errContentType.includes("application/json")) {
+            errorData = await response.json().catch(() => ({}));
           }
-          if (errorData.type === "validation") {
-            onError?.(errorMessage, "validation");
-            onErrorMessage?.(errorMessage, "validation");
-            return;
+
+          if (errorData.error) {
+            const errorMessage = errorData.error;
+            if (errorData.type === "edit_failed") {
+              onError?.(errorMessage, "validation", errorData.failedEdit as unknown as FailedEditInfo);
+              onErrorMessage?.(errorMessage, "edit_failed", errorData.failedEdit as unknown as FailedEditInfo);
+              return;
+            }
+            if (errorData.type === "validation") {
+              onError?.(errorMessage, "validation");
+              onErrorMessage?.(errorMessage, "validation");
+              return;
+            }
+            throw new Error(errorMessage);
           }
-          throw new Error(errorMessage);
+
+          // Friendly messages for common HTTP errors
+          if (response.status === 413) {
+            throw new Error(
+              "Request too large — please use smaller images or fewer attachments.",
+            );
+          }
+          throw new Error(
+            `Something went wrong (${response.status}). Please try again.`,
+          );
         }
 
         const contentType = response.headers.get("content-type") || "";
@@ -160,7 +195,7 @@ export function useGenerationApi(): UseGenerationApiReturn {
         if (contentType.includes("application/json")) {
           const data = await response.json();
           const { summary, metadata } = data;
-          const code = injectBaseFrame(data.code, frameImages);
+          const code = injectBaseFrame(data.code, imageUrls ?? frameImages);
           onCodeGenerated?.(code);
           onGenerationComplete?.(code, summary, metadata);
           const validation = validateGptResponse(code);
@@ -224,7 +259,7 @@ export function useGenerationApi(): UseGenerationApiReturn {
 
         let finalCode = stripMarkdownFences(accumulatedText);
         finalCode = extractComponentCode(finalCode);
-        finalCode = injectBaseFrame(finalCode, frameImages);
+        finalCode = injectBaseFrame(finalCode, imageUrls ?? frameImages);
         onCodeGenerated?.(finalCode);
         onClearPendingMessage?.();
         onGenerationComplete?.(

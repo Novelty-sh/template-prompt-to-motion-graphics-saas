@@ -635,22 +635,26 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
   const hasTemplateSkill = detectedSkills.some((s) => s.startsWith("template-"));
 
   // Upload + analyze attached images when template mode is active
+  // Images may already be URLs (uploaded by frontend via presigned URL) or base64.
+  const isAlreadyUploaded = frameImages?.[0]?.startsWith("http");
+
   let templateImageContext = "";
   if (hasTemplateSkill && frameImages && frameImages.length > 0) {
     try {
-      const sessionId = `session-${Date.now()}`;
-      const [uploaded, descriptions] = await Promise.all([
-        uploadImages(frameImages, sessionId),
-        analyzeImages(frameImages, geminiVision),
-      ]);
+      // Upload to GCS only if images are still base64 (fallback path)
+      const imageUrls = isAlreadyUploaded
+        ? frameImages.map((url, i) => ({ index: i + 1, url }))
+        : await uploadImages(frameImages, `session-${Date.now()}`);
 
-      const imageLines = uploaded.map((img, i) => {
+      const descriptions = await analyzeImages(frameImages, geminiVision);
+
+      const imageLines = imageUrls.map((img, i) => {
         const desc = descriptions[i] || "Image";
         return `${img.index}. ${img.url} — "${desc}"`;
       });
 
       templateImageContext = `## ATTACHED IMAGES
-The user attached ${uploaded.length} image(s). Use these permanent URLs directly in your code (with the Img component from remotion):
+The user attached ${imageUrls.length} image(s). Use these permanent URLs directly in your code (with the Img component from remotion):
 ${imageLines.join("\n")}
 
 Based on the user's prompt, decide how to use each image:
@@ -658,7 +662,7 @@ Based on the user's prompt, decide how to use each image:
 - Other photos → add as image messages in the MESSAGES array using the imageUrl field
 - Use your best judgment based on the image descriptions and the user's request`;
 
-      console.log("Uploaded template images:", uploaded.map((u) => u.url));
+      console.log("Template images:", imageUrls.map((u) => u.url));
     } catch (err) {
       console.error("Template image upload/analysis failed:", err);
       // Continue without images — template still works with text-only
