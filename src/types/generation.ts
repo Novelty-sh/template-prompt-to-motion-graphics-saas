@@ -8,13 +8,13 @@ export type AspectRatio = (typeof ASPECT_RATIOS)[number]["id"];
 
 export const MODELS = [
   // OpenAI — GPT-5
-  { id: "gpt-5.2:none", name: "GPT-5.2", group: "OpenAI" },
-  { id: "gpt-5.2:low", name: "GPT-5.2 (Low)", group: "OpenAI" },
-  { id: "gpt-5.2:medium", name: "GPT-5.2 (Medium)", group: "OpenAI" },
-  { id: "gpt-5.2:high", name: "GPT-5.2 (High)", group: "OpenAI" },
-  { id: "gpt-5.2-pro:medium", name: "GPT-5.2 Pro (Medium)", group: "OpenAI" },
-  { id: "gpt-5.2-pro:high", name: "GPT-5.2 Pro (High)", group: "OpenAI" },
-  { id: "gpt-5.2-pro:xhigh", name: "GPT-5.2 Pro (XHigh)", group: "OpenAI" },
+  { id: "gpt-5.4:none", name: "GPT-5.4", group: "OpenAI" },
+  { id: "gpt-5.4:low", name: "GPT-5.4 (Low)", group: "OpenAI" },
+  { id: "gpt-5.4:medium", name: "GPT-5.4 (Medium)", group: "OpenAI" },
+  { id: "gpt-5.4:high", name: "GPT-5.4 (High)", group: "OpenAI" },
+  { id: "gpt-5.4-pro:medium", name: "GPT-5.4 Pro (Medium)", group: "OpenAI" },
+  { id: "gpt-5.4-pro:high", name: "GPT-5.4 Pro (High)", group: "OpenAI" },
+  { id: "gpt-5.4-pro:xhigh", name: "GPT-5.4 Pro (XHigh)", group: "OpenAI" },
   // Claude — via AWS Bedrock
   { id: "bedrock:claude-opus-4-6", name: "Claude Opus 4.6", group: "Claude" },
   { id: "bedrock:claude-sonnet-4-6", name: "Claude Sonnet 4.6", group: "Claude" },

@@ -52,7 +52,7 @@ export function LandingPageInput({
   showCodeExamplesLink = false,
 }: LandingPageInputProps) {
   const [prompt, setPrompt] = useState("");
-  const [model, setModel] = useState<ModelId>("gpt-5.2:low");
+  const [model, setModel] = useState<ModelId>("gpt-5.4:low");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const {
     attachedImages,

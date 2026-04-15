@@ -481,7 +481,7 @@ interface GenerateResponse {
 export async function POST(req: Request) {
   const {
     prompt,
-    model = "gpt-5.2",
+    model = "gpt-5.4",
     currentCode,
     conversationHistory = [],
     isFollowUp = false,
@@ -555,7 +555,7 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
     isFollowUp
       ? Promise.resolve(null)
       : generateObject({
-          model: openai("gpt-5.2"),
+          model: openai("gpt-5.4"),
           system: VALIDATION_PROMPT,
           prompt: `User prompt: "${prompt}"`,
           schema: z.object({ valid: z.boolean() }),
@@ -563,7 +563,7 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
 
     // Detect skills
     generateObject({
-      model: openai("gpt-5.2"),
+      model: openai("gpt-5.4"),
       system: SKILL_DETECTION_PROMPT,
       prompt: `User prompt: "${prompt}"`,
       schema: z.object({ skills: z.array(z.enum(SKILL_NAMES)) }),
@@ -572,7 +572,7 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
     // Mode routing — classify image_base vs react_reconstruct when images are present
     hasReferenceImages
       ? generateObject({
-          model: openai("gpt-5.2"),
+          model: openai("gpt-5.4"),
           system: MODE_ROUTING_PROMPT,
           messages: [{
             role: "user",

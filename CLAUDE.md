@@ -89,7 +89,7 @@ Two tables — `sessions` (id, title, model, aspect_ratio) and `code_snapshots` 
 - **Anthropic direct** (via `@anthropic-ai/sdk`): Used only for follow-up edits with Claude's text editor tool (`str_replace_based_edit_tool`). Bypasses Bedrock for this path because the text editor tool is Anthropic API-only.
 - **Google Vertex** (via Vercel AI SDK `@ai-sdk/google-vertex`): Gemini 3.1 Pro — used only for vision (image analysis / UI extraction).
 
-Model IDs sent from frontend: `gpt-5.2`, `bedrock:claude-sonnet-4-6`, `bedrock:claude-opus-4-6`. Bedrock prefix is stripped before passing to Anthropic direct API for edits.
+Model IDs sent from frontend: `gpt-5.4`, `bedrock:claude-sonnet-4-6`, `bedrock:claude-opus-4-6`. Bedrock prefix is stripped before passing to Anthropic direct API for edits.
 
 ### Streaming Protocol
 
