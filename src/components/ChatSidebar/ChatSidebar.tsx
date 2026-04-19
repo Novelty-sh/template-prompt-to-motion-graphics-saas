@@ -81,6 +81,7 @@ interface ChatSidebarProps {
   defaultModel?: ModelId;
   onModelChange?: (model: ModelId) => void;
   aspectRatio?: AspectRatio;
+  seedTemplateId?: string | null;
 }
 
 export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(
@@ -114,6 +115,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(
       defaultModel,
       onModelChange: onModelChangeProp,
       aspectRatio,
+      seedTemplateId,
     },
     ref,
   ) {
@@ -159,6 +161,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(
           errorCorrection,
           frameImages: options?.attachedImages,
           aspectRatio,
+          seedTemplateId,
         },
         {
           onCodeGenerated,

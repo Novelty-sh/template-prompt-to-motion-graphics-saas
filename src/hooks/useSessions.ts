@@ -1,5 +1,6 @@
 "use client";
 
+import { getSeedTemplateById } from "@/seed-templates";
 import { type Session, supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
 
@@ -40,5 +41,53 @@ export function useSessions() {
     [],
   );
 
-  return { sessions, isLoading, createSession };
+  const createSessionFromTemplate = useCallback(
+    async (templateId: string): Promise<string | null> => {
+      const template = getSeedTemplateById(templateId);
+      if (!template) {
+        console.error("Unknown seed template:", templateId);
+        return null;
+      }
+
+      const { data: session, error: sessionError } = await supabase
+        .from("sessions")
+        .insert({
+          title: template.name,
+          model: template.defaultModel,
+          aspect_ratio: template.aspectRatio,
+          seed_template_id: template.id,
+          fps: template.fps,
+          duration_in_frames: template.durationInFrames,
+        })
+        .select("id")
+        .single();
+
+      if (sessionError || !session) {
+        console.error("Failed to create session from template:", sessionError);
+        return null;
+      }
+
+      const { error: snapshotError } = await supabase
+        .from("code_snapshots")
+        .insert({
+          session_id: session.id,
+          code: template.code,
+          prompt: `Seeded from template: ${template.name}`,
+          summary: "Initial template",
+          skills: [],
+          sequence_number: 0,
+        });
+
+      if (snapshotError) {
+        console.error("Failed to seed initial snapshot:", snapshotError);
+        await supabase.from("sessions").delete().eq("id", session.id);
+        return null;
+      }
+
+      return session.id;
+    },
+    [],
+  );
+
+  return { sessions, isLoading, createSession, createSessionFromTemplate };
 }

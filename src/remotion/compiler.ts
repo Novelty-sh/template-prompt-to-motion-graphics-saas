@@ -15,6 +15,7 @@ import { wipe } from "@remotion/transitions/wipe";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AbsoluteFill,
+  Easing,
   Img,
   Sequence,
   interpolate,
@@ -155,6 +156,8 @@ export function compileCode(code: string): CompilationResult {
       "Emoji",
       "getEmojiUrl",
       "renderTextWithEmoji",
+      // Easing curves
+      "Easing",
       wrappedCode,
     );
 
@@ -205,6 +208,8 @@ export function compileCode(code: string): CompilationResult {
       Emoji,
       getEmojiUrl,
       renderTextWithEmoji,
+      // Easing curves
+      Easing,
     );
 
     if (typeof Component !== "function") {

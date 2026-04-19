@@ -56,6 +56,7 @@ interface GenerationContext {
   errorCorrection?: ErrorCorrectionContext;
   frameImages?: string[];
   aspectRatio?: AspectRatio;
+  seedTemplateId?: string | null;
 }
 
 interface UseGenerationApiReturn {
@@ -97,6 +98,7 @@ export function useGenerationApi(): UseGenerationApiReturn {
         errorCorrection,
         frameImages,
         aspectRatio,
+        seedTemplateId,
       } = context;
 
       const {
@@ -156,6 +158,7 @@ export function useGenerationApi(): UseGenerationApiReturn {
             errorCorrection,
             frameImages: imageUrls ?? frameImages,
             aspectRatio,
+            seedTemplateId,
           }),
         });
 

@@ -51,6 +51,7 @@ function VideoPageContent() {
     useState<ErrorCorrectionContext | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [sessionModel, setSessionModel] = useState<ModelId | undefined>(undefined);
+  const [seedTemplateId, setSeedTemplateId] = useState<string | null>(null);
   // Initialize directly from sessionStorage so new sessions start at the right ratio immediately
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(() => {
     if (typeof window === "undefined") return "16:9";
@@ -148,12 +149,15 @@ function VideoPageContent() {
   useEffect(() => {
     supabase
       .from("sessions")
-      .select("model, aspect_ratio")
+      .select("model, aspect_ratio, fps, duration_in_frames, seed_template_id")
       .eq("id", sessionId)
       .single()
       .then(({ data }) => {
         if (data?.model) setSessionModel(data.model as ModelId);
         if (data?.aspect_ratio) setAspectRatio(data.aspect_ratio as AspectRatio);
+        if (data?.fps) setFps(data.fps);
+        if (data?.duration_in_frames) setDurationInFrames(data.duration_in_frames);
+        if (data?.seed_template_id) setSeedTemplateId(data.seed_template_id);
       });
   }, [sessionId]);
 
@@ -314,6 +318,7 @@ function VideoPageContent() {
           defaultModel={sessionModel}
           onModelChange={handleModelChange}
           aspectRatio={aspectRatio}
+          seedTemplateId={seedTemplateId}
         />
 
         <div className="flex-1 flex flex-col min-w-0 pr-12 pb-8 overflow-hidden">

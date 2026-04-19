@@ -3,9 +3,11 @@
 import { LandingPageInput } from "@/components/LandingPageInput";
 import { PageLayout } from "@/components/PageLayout";
 import { useSessions } from "@/hooks/useSessions";
+import { seedTemplates } from "@/seed-templates";
 import type { ModelId } from "@/types/generation";
 import { ArrowRight, Video } from "lucide-react";
 import type { NextPage } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -35,7 +37,7 @@ function formatRelativeDate(dateStr: string): string {
 const Home: NextPage = () => {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
-  const { sessions, isLoading, createSession } = useSessions();
+  const { sessions, isLoading, createSession, createSessionFromTemplate } = useSessions();
 
   const handleNavigate = async (
     prompt: string,
@@ -61,6 +63,17 @@ const Home: NextPage = () => {
     router.push(`/videos/${sessionId}`);
   };
 
+  const handleTemplateClick = async (templateId: string) => {
+    if (isNavigating) return;
+    setIsNavigating(true);
+    const sessionId = await createSessionFromTemplate(templateId);
+    if (!sessionId) {
+      setIsNavigating(false);
+      return;
+    }
+    router.push(`/videos/${sessionId}`);
+  };
+
   return (
     <PageLayout>
       <div className="flex flex-col items-center w-full flex-1 px-4 py-8 overflow-y-auto">
@@ -69,6 +82,42 @@ const Home: NextPage = () => {
           isNavigating={isNavigating}
           showCodeExamplesLink
         />
+
+        {/* Start from a template */}
+        <div className="w-full max-w-3xl mt-10">
+          <h2 className="text-sm font-medium text-muted-foreground mb-3 px-1">
+            Or start from a template
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {seedTemplates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => handleTemplateClick(template.id)}
+                disabled={isNavigating}
+                className="group flex flex-col items-stretch text-left bg-background-elevated rounded-lg border border-border hover:border-primary/40 transition-colors overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="relative w-full aspect-[9/16] bg-muted overflow-hidden">
+                  <Image
+                    src={template.thumbnail}
+                    alt={template.name}
+                    fill
+                    sizes="(max-width: 640px) 50vw, 200px"
+                    className="object-cover group-hover:scale-[1.02] transition-transform"
+                  />
+                </div>
+                <div className="p-3">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {template.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                    {template.description}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Previous sessions */}
         {!isLoading && sessions.length > 0 && (

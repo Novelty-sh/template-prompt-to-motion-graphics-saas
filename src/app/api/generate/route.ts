@@ -5,6 +5,7 @@ import {
   type SkillName,
 } from "@/skills";
 import { ASPECT_RATIOS } from "@/types/generation";
+import { getSeedTemplateById } from "@/seed-templates";
 import { editWithTextEditor } from "@/lib/anthropic-editor";
 import { uploadImages } from "@/lib/gcs-upload";
 import { analyzeImages } from "@/lib/image-analysis";
@@ -465,6 +466,8 @@ interface GenerateRequest {
   frameImages?: string[];
   /** Target aspect ratio for the composition */
   aspectRatio?: string;
+  /** If the session was started from a seed template, its id — triggers preserve-structure guidance on edits */
+  seedTemplateId?: string | null;
 }
 
 interface GenerateResponse {
@@ -490,6 +493,7 @@ export async function POST(req: Request) {
     previouslyUsedSkills = [],
     frameImages,
     aspectRatio = "16:9",
+    seedTemplateId,
   }: GenerateRequest = await req.json();
 
   const arConfig = ASPECT_RATIOS.find((ar) => ar.id === aspectRatio) ?? ASPECT_RATIOS[0];
@@ -683,13 +687,17 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
       });
 
       templateImageContext = `## ATTACHED IMAGES
-The user attached ${imageUrls.length} image(s). Use these permanent URLs directly in your code (with the Img component from remotion):
+The user attached ${imageUrls.length} image(s). These URLs belong ONLY in the DYNAMIC DATA section of the template:
 ${imageLines.join("\n")}
 
-Based on the user's prompt, decide how to use each image:
-- Portrait / face photo → assign to CONTACT_AVATAR_URL
-- Other photos → add as image messages in the MESSAGES array using the imageUrl field
-- Use your best judgment based on the image descriptions and the user's request`;
+Routing rules (apply per image, based on its content):
+- Portrait / face / person → CONTACT_AVATAR_URL
+- Anything else (screenshot, photo, object, scene) → a MESSAGES[] entry with the imageUrl field set
+
+STRICT RULES:
+- Do NOT put these URLs into WALLPAPER_URL or any other TEMPLATE CONSTANT. The wallpaper is fixed.
+- Do NOT introduce new <Img> tags outside the existing template structure.
+- If an attached image doesn't obviously fit either slot, place it as an imageUrl on a relevant MESSAGES[] entry.`;
 
       console.log("Template images:", imageUrls.map((u) => u.url));
     } catch (err) {
@@ -799,6 +807,17 @@ Focus ONLY on fixing the error. Do not make other changes.`;
           : "",
       );
 
+      // If this session was started from a seed template, append guidance to preserve its structure.
+      const seedTemplate = seedTemplateId ? getSeedTemplateById(seedTemplateId) : null;
+      const followUpSystemPrompt = seedTemplate
+        ? `${FOLLOW_UP_SYSTEM_PROMPT}
+
+## SEED TEMPLATE: ${seedTemplate.name}
+This code was seeded from a curated template. Prefer targeted edits (type: "edit") over full replacement.
+Preserve the template's overall structure, layout, and visual design. Modify only what the user explicitly asks for — typically the dynamic data (messages, text, timings, colors) rather than the component scaffolding.
+Only use full replacement if the user explicitly asks for a structural rewrite or a completely different design.`
+        : FOLLOW_UP_SYSTEM_PROMPT;
+
       // ---------------------------------------------------------------
       // Claude path: use native text editor tool via Anthropic API
       // ---------------------------------------------------------------
@@ -808,7 +827,7 @@ Focus ONLY on fixing the error. Do not make other changes.`;
         const editorResult = await editWithTextEditor({
           currentCode,
           prompt,
-          systemPrompt: FOLLOW_UP_SYSTEM_PROMPT,
+          systemPrompt: followUpSystemPrompt,
           model: modelName,
           conversationContext,
           manualEditNotice,
@@ -872,7 +891,7 @@ Analyze the request and decide: use targeted edits (type: "edit") for small chan
 
       const editResult = await generateObject({
         model: generationModel,
-        system: FOLLOW_UP_SYSTEM_PROMPT,
+        system: followUpSystemPrompt,
         messages: editMessages,
         schema: FollowUpResponseSchema,
       });

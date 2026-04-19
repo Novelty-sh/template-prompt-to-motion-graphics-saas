@@ -11,6 +11,9 @@ export interface Session {
   title: string | null;
   model: string;
   aspect_ratio: string;
+  seed_template_id: string | null;
+  fps: number | null;
+  duration_in_frames: number | null;
 }
 
 export interface CodeSnapshot {
