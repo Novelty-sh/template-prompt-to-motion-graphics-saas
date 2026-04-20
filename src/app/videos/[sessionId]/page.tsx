@@ -37,11 +37,14 @@ function VideoPageContent() {
   );
   const [fps, setFps] = useState(examples[0]?.fps || 30);
 
-  // Debounced persist of duration/fps. Called both from the Settings modal (user edits)
-  // and from the compiled component's __setDuration hook (auto-follow).
+  // Once the user manually changes duration, we stop letting __setDuration
+  // reports from the compiled component overwrite it. Flag persists in Supabase
+  // so the choice survives a refresh.
+  const durationOverrideRef = useRef(false);
+
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistSettings = useCallback(
-    (patch: { duration_in_frames?: number; fps?: number }) => {
+    (patch: { duration_in_frames?: number; fps?: number; duration_override?: boolean }) => {
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
       persistTimerRef.current = setTimeout(() => {
         supabase.from("sessions").update(patch).eq("id", sessionId);
@@ -50,8 +53,23 @@ function VideoPageContent() {
     [sessionId],
   );
 
+  // User edit from the Settings modal: wins, locks out auto-follow.
   const handleDurationChange = useCallback(
     (n: number) => {
+      durationOverrideRef.current = true;
+      setDurationInFrames((prev) => {
+        if (prev === n) return prev;
+        persistSettings({ duration_in_frames: n, duration_override: true });
+        return n;
+      });
+    },
+    [persistSettings],
+  );
+
+  // Auto-follow from __setDuration: skip if user already overrode.
+  const handleReportDuration = useCallback(
+    (n: number) => {
+      if (durationOverrideRef.current) return;
       setDurationInFrames((prev) => {
         if (prev === n) return prev;
         persistSettings({ duration_in_frames: n });
@@ -167,11 +185,12 @@ function VideoPageContent() {
   });
 
   // Options passed to every compile — lets the component auto-report its natural
-  // duration back up to state via the __setDuration hook.
+  // duration back up to state via the __setDuration hook. Goes through
+  // handleReportDuration so it respects the user-override flag.
   const compileOptions = useRef({
-    onReportDuration: (n: number) => handleDurationChange(n),
+    onReportDuration: (n: number) => handleReportDuration(n),
   });
-  compileOptions.current.onReportDuration = (n: number) => handleDurationChange(n);
+  compileOptions.current.onReportDuration = (n: number) => handleReportDuration(n);
 
   // Sync refs
   useEffect(() => {
@@ -191,7 +210,7 @@ function VideoPageContent() {
   useEffect(() => {
     supabase
       .from("sessions")
-      .select("model, aspect_ratio, fps, duration_in_frames, seed_template_id")
+      .select("model, aspect_ratio, fps, duration_in_frames, duration_override, seed_template_id")
       .eq("id", sessionId)
       .single()
       .then(({ data }) => {
@@ -199,6 +218,7 @@ function VideoPageContent() {
         if (data?.aspect_ratio) setAspectRatio(data.aspect_ratio as AspectRatio);
         if (data?.fps) setFps(data.fps);
         if (data?.duration_in_frames) setDurationInFrames(data.duration_in_frames);
+        if (data?.duration_override) durationOverrideRef.current = true;
         if (data?.seed_template_id) setSeedTemplateId(data.seed_template_id);
       });
   }, [sessionId]);
