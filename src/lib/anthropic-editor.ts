@@ -46,6 +46,26 @@ export interface EditorResult {
 
 const VIRTUAL_PATH = "animation.tsx";
 
+function toAnthropicImageBlock(img: string): Anthropic.ImageBlockParam | null {
+  if (img.startsWith("data:")) {
+    const match = img.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return null;
+    const [, mediaType, data] = match;
+    return {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+        data,
+      },
+    };
+  }
+  if (img.startsWith("http")) {
+    return { type: "image", source: { type: "url", url: img } };
+  }
+  return null;
+}
+
 export async function editWithTextEditor(opts: {
   currentCode: string;
   prompt: string;
@@ -54,6 +74,7 @@ export async function editWithTextEditor(opts: {
   conversationContext?: string;
   manualEditNotice?: string;
   errorCorrectionNotice?: string;
+  frameImages?: string[];
 }): Promise<EditorResult> {
   const client = getEditorClient();
 
@@ -62,19 +83,31 @@ export async function editWithTextEditor(opts: {
   let summary = "";
 
   // Build user message with all context
-  const userMessage = [
+  const userText = [
     `The file \`${VIRTUAL_PATH}\` contains the current animation code.`,
     opts.conversationContext || "",
     opts.manualEditNotice || "",
     opts.errorCorrectionNotice || "",
     `\nUser request: ${opts.prompt}`,
+    opts.frameImages && opts.frameImages.length > 0
+      ? `\n(The user attached ${opts.frameImages.length} image${opts.frameImages.length > 1 ? "s" : ""} — see below.)`
+      : "",
     `\nUse the text editor tool to make changes to \`${VIRTUAL_PATH}\`.`,
   ]
     .filter(Boolean)
     .join("\n");
 
+  const imageBlocks = (opts.frameImages ?? [])
+    .map((img) => toAnthropicImageBlock(img))
+    .filter((b): b is Anthropic.ImageBlockParam => b !== null);
+
+  const initialContent: Anthropic.ContentBlockParam[] =
+    imageBlocks.length > 0
+      ? [...imageBlocks, { type: "text", text: userText }]
+      : [{ type: "text", text: userText }];
+
   const messages: Anthropic.MessageParam[] = [
-    { role: "user", content: userMessage },
+    { role: "user", content: initialContent },
   ];
 
   const MAX_TURNS = 10;

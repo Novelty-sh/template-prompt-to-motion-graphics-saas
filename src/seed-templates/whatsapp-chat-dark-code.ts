@@ -1,5 +1,7 @@
-export const whatsappChatDarkSeedCode = `import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Img, Easing } from "remotion";
-import { renderTextWithEmoji } from "@/lib/twemoji";
+// To edit this template, paste real .tsx code between the String.raw backticks.
+// No escape juggling: \", \s, etc. are preserved as-is. Only ` and ${ need escaping.
+export const whatsappChatDarkSeedCode = String.raw`import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Img, Easing, CalculateMetadataFunction } from "remotion";
+import { renderTextWithEmoji } from "./lib/twemoji";
 
 type PopConfig = {
   delay?: number;
@@ -17,6 +19,29 @@ type Message = {
 };
 
 const POP_DEFAULTS = { delay: 15, scale: 1.4, growFrames: 8, holdFrames: 30, shrinkFrames: 8 };
+const TYPING_DOTS_BASE = 20;
+const TYPING_DOTS_PER_CHAR = 1.2;
+const TYPING_CHAR_SPEED = 3.5;
+const TYPING_DURATION_CAP = 9999;
+const POST_MESSAGE_GAP = 6;
+const TAIL_HOLD_FRAMES = 90;
+
+const CONTACT_NAME = "Jhumki";
+const CONTACT_AVATAR_URL = "https://storage.googleapis.com/novelty-public-videos/motion-graphics/images/session-1776668368203/1776668368203-1.png";
+const MESSAGES: Message[] = [
+  { text: "I tracked the IP. The thief isn't a stranger.", sent: false, time: "11:42 PM", pop: { scale: 1.3 }},
+  { text: "Who is it??", sent: true, time: "11:42 PM", pop: { scale: 2 } },
+  { text: "The signal is coming from your kitchen. 📍", sent: false, time: "11:43 PM", pop: { scale: 1.3 } },
+  { text: "I'm the only one here", sent: true, time: "11:43 PM" },
+  { text: "Look at the 0:12 mark. The reflection in the toaster.", sent: false, time: "11:44 PM" },
+  { text: "Wait. Is that my MOM?? In her bathrobe?? 👵", sent: true, time: "11:44 PM", pop: { scale: 1.3} },
+  { text: "She's doing the Dubai transition. With a rolling pin.", sent: false, time: "11:45 PM", pop: { scale: 1.3} },
+  { text: "She told me she was taking a NAP 😭", sent: true, time: "11:45 PM" },
+  { text: "She's replying to comments saying \"Thanks fam, check my link in bio for pickle recipes.\"", sent: false, time: "11:46 PM", pop: { scale: 1.3} },
+  { text: "Jhumki she has more followers than us combined.", sent: true, time: "11:46 PM" },
+  { text: "I'm outside your door. I can hear her practicing the next script.", sent: false, time: "11:47 PM", pop: { scale: 1.3} },
+  { text: "I'm outside your door. I can hear her practicing the next script.", sent: false, time: "11:47 PM", pop: { scale: 1.3} },
+];
 
 const getPopTotalDuration = (pop?: PopConfig) => {
   if (!pop) return 0;
@@ -26,27 +51,48 @@ const getPopTotalDuration = (pop?: PopConfig) => {
     + (pop.shrinkFrames ?? POP_DEFAULTS.shrinkFrames);
 };
 
-export const MyAnimation = () => {
+const getTypingDurForSent = (text: string, seed: number) => {
+  const chars = Array.from(text);
+  let acc = 0;
+  for (let c = 0; c < chars.length; c++) {
+    const hash = Math.sin((c + 1) * 9301 + seed * 7919) * 10000;
+    const variation = (hash - Math.floor(hash));
+    const isAfterPause = c > 0 && /[.,!?\s]/.test(chars[c - 1]);
+    const baseDelay = TYPING_CHAR_SPEED * (0.6 + variation * 0.8);
+    const pauseExtra = isAfterPause ? TYPING_CHAR_SPEED * (0.4 + variation * 0.6) : 0;
+    acc += baseDelay + pauseExtra;
+  }
+  return Math.min(Math.ceil(acc) + 6, TYPING_DURATION_CAP);
+};
+
+const getReceivedTypingDur = (text: string) => {
+  const charCount = Array.from(text).length;
+  return Math.round(TYPING_DOTS_BASE + charCount * TYPING_DOTS_PER_CHAR);
+};
+
+const getTypingDur = (m: { text: string; sent: boolean }, idx: number) => m.sent
+  ? getTypingDurForSent(m.text, idx)
+  : getReceivedTypingDur(m.text);
+
+const computeTimeline = () => {
+  const starts: number[] = [];
+  let acc = 0;
+  for (let i = 0; i < MESSAGES.length; i++) {
+    acc += getTypingDur(MESSAGES[i], i) + POST_MESSAGE_GAP;
+    starts.push(acc);
+    acc += getPopTotalDuration(MESSAGES[i].pop);
+  }
+  return { starts, totalFrames: acc };
+};
+
+export const calculateWhatsAppMetadata: CalculateMetadataFunction<Record<string, unknown>> = async ({ defaultProps }) => {
+  const { totalFrames } = computeTimeline();
+  return { durationInFrames: totalFrames + TAIL_HOLD_FRAMES, props: defaultProps };
+};
+
+export const WhatsApp = () => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
-
-  // ===== DYNAMIC DATA (Replace this section based on user prompt) =====
-  const CONTACT_NAME = "Jhumki";
-  const CONTACT_AVATAR_URL = "";
-  const MESSAGES: Message[] = [
-    { text: "I tracked the IP. The thief isn't a stranger.", sent: false, time: "11:42 PM" },
-    { text: "Who is it??", sent: true, time: "11:42 PM", pop: { scale: 2 } },
-    { text: "The signal is coming from your kitchen. \u{1F4CD}", sent: false, time: "11:43 PM" },
-    { text: "I'm the only one here", sent: true, time: "11:43 PM", pop: { scale: 2 } },
-    { text: "Look at the 0:12 mark. The reflection in the toaster.", sent: false, time: "11:44 PM" },
-    { text: "Wait. Is that my MOM?? In her bathrobe?? \u{1F475}", sent: true, time: "11:44 PM", pop: {} },
-    { text: "She's doing the Dubai transition. With a rolling pin.", sent: false, time: "11:45 PM" },
-    { text: "She told me she was taking a NAP \u{1F62D}", sent: true, time: "11:45 PM" },
-    { text: "She's replying to comments saying \\"Thanks fam, check my link in bio for pickle recipes.\\"", sent: false, time: "11:46 PM" },
-    { text: "Jhumki she has more followers than us combined.", sent: true, time: "11:46 PM" },
-    { text: "I'm outside your door. I can hear her practicing the next script.", sent: false, time: "11:47 PM" },
-  ];
-  // ===== END DYNAMIC DATA =====
 
   // ===== TEMPLATE CONSTANTS (WhatsApp dark theme) =====
   const WALLPAPER_URL = "https://videos.novelty.sh/motion-graphics/wallpapers/whatsapp-dark.jpg";
@@ -62,15 +108,9 @@ export const MyAnimation = () => {
   const COLOR_GREEN = "#00a884";
   const FONT = "Inter, system-ui, -apple-system, sans-serif";
   const HEADER_HEIGHT = Math.round(height * 0.08);
-  const INPUT_HEIGHT = Math.round(height * 0.07);
   const BUBBLE_MAX_WIDTH = "75%";
   const BUBBLE_RADIUS = 24;
   const TAIL_SIZE = 16;
-  const TYPING_DOTS_BASE = 20;
-  const TYPING_DOTS_PER_CHAR = 1.2;
-  const TYPING_CHAR_SPEED = 3.5;
-  const TYPING_DURATION_CAP = 9999;
-  const POST_MESSAGE_GAP = 6;
   // ===== END TEMPLATE CONSTANTS =====
 
   const scale = Math.min(width / 1080, height / 1920);
@@ -83,35 +123,7 @@ export const MyAnimation = () => {
   const initials = CONTACT_NAME.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
   // ===== CHAT TIMELINE =====
-  const getTypingDurForSent = (text: string, seed: number) => {
-    const chars = Array.from(text);
-    let acc = 0;
-    for (let c = 0; c < chars.length; c++) {
-      const hash = Math.sin((c + 1) * 9301 + seed * 7919) * 10000;
-      const variation = (hash - Math.floor(hash));
-      const isAfterPause = c > 0 && /[.,!?\\s]/.test(chars[c - 1]);
-      const baseDelay = TYPING_CHAR_SPEED * (0.6 + variation * 0.8);
-      const pauseExtra = isAfterPause ? TYPING_CHAR_SPEED * (0.4 + variation * 0.6) : 0;
-      acc += baseDelay + pauseExtra;
-    }
-    return Math.min(Math.ceil(acc) + 6, TYPING_DURATION_CAP);
-  };
-  const getReceivedTypingDur = (text: string) => {
-    const charCount = Array.from(text).length;
-    return Math.round(TYPING_DOTS_BASE + charCount * TYPING_DOTS_PER_CHAR);
-  };
-  const getTypingDur = (m: { text: string; sent: boolean }, idx: number) => m.sent
-    ? getTypingDurForSent(m.text, idx)
-    : getReceivedTypingDur(m.text);
-  const messageStartFrames: number[] = [];
-  {
-    let acc = 0;
-    for (let i = 0; i < MESSAGES.length; i++) {
-      acc += getTypingDur(MESSAGES[i], i) + POST_MESSAGE_GAP;
-      messageStartFrames.push(acc);
-      acc += getPopTotalDuration(MESSAGES[i].pop);
-    }
-  }
+  const messageStartFrames = computeTimeline().starts;
 
   // Build per-character frame thresholds with natural variation
   const getCharFrames = (text: string, seed: number) => {
@@ -119,9 +131,11 @@ export const MyAnimation = () => {
     const thresholds: number[] = [];
     let acc = 0;
     for (let c = 0; c < chars.length; c++) {
+      // Pseudo-random variation per character using a simple hash
       const hash = Math.sin((c + 1) * 9301 + seed * 7919) * 10000;
-      const variation = (hash - Math.floor(hash));
-      const isAfterPause = c > 0 && /[.,!?\\s]/.test(chars[c - 1]);
+      const variation = (hash - Math.floor(hash)); // 0-1
+      // Base speed with +/- 40% variation; extra pause after spaces and punctuation
+      const isAfterPause = c > 0 && /[.,!?\s]/.test(chars[c - 1]);
       const baseDelay = TYPING_CHAR_SPEED * (0.6 + variation * 0.8);
       const pauseExtra = isAfterPause ? TYPING_CHAR_SPEED * (0.4 + variation * 0.6) : 0;
       acc += baseDelay + pauseExtra;
@@ -150,6 +164,21 @@ export const MyAnimation = () => {
       break;
     }
   }
+
+  // ===== INPUT PILL SIZING (CSS handles wrapping; footer hugs pill) =====
+  const pillPaddingH = Math.round(18 * scale);
+  const pillPaddingV = Math.round(12 * scale);
+  const stickerSize = Math.round(36 * scale);
+  const pillGap = Math.round(10 * scale);
+  const footerSidePad = Math.round(16 * scale);
+  const footerGap = Math.round(14 * scale);
+  const plusSize = Math.round(48 * scale);
+  const cameraSize = Math.round(46 * scale);
+  const rupeeSize = Math.round(38 * scale);
+  const micSize = Math.round(41 * scale);
+  const lineHeight = Math.round(fontSize * 1.4);
+  const pillMinHeight = lineHeight + pillPaddingV * 2;
+  const footerPadV = Math.round(8 * scale);
 
   const TypingIndicator = ({ startFrame }: { startFrame: number }) => {
     const localFrame = frame - startFrame;
@@ -198,12 +227,12 @@ export const MyAnimation = () => {
   };
 
   return (
-    <AbsoluteFill style={{ backgroundColor: COLOR_BG, fontFamily: FONT, overflow: "hidden" }}>
+    <AbsoluteFill style={{ backgroundColor: COLOR_BG, fontFamily: FONT, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <Img src={WALLPAPER_URL} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
 
       {/* Header */}
       <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: HEADER_HEIGHT,
+        position: "relative", flexShrink: 0, height: HEADER_HEIGHT,
         backgroundColor: COLOR_HEADER, display: "flex", alignItems: "center",
         padding: "0 " + padding + "px", gap: Math.round(12 * scale), zIndex: 10,
       }}>
@@ -242,7 +271,7 @@ export const MyAnimation = () => {
 
       {/* Chat area */}
       <div style={{
-        position: "absolute", top: HEADER_HEIGHT, left: 0, right: 0, bottom: INPUT_HEIGHT,
+        position: "relative", flex: 1, minHeight: 0,
         display: "flex", flexDirection: "column", justifyContent: "flex-end",
         padding: padding + "px " + padding + "px " + Math.round(8 * scale) + "px",
         overflow: "hidden",
@@ -258,6 +287,7 @@ export const MyAnimation = () => {
             : msgStartFrame - sentTypingDur;
           const showTyping = isReceived && frame >= typingStartFrame && frame < msgStartFrame;
 
+          // Only render messages that are currently typing or already appeared
           const isVisible = frame >= typingStartFrame;
           if (!isVisible) return null;
 
@@ -340,21 +370,23 @@ export const MyAnimation = () => {
 
       {/* Input bar */}
       <div style={{
-        position: "absolute", bottom: 0, left: 0, right: 0, height: INPUT_HEIGHT,
-        backgroundColor: COLOR_FOOTER_BG, display: "flex", alignItems: "center",
-        padding: "0 " + Math.round(16 * scale) + "px", gap: Math.round(14 * scale),
+        position: "relative", flexShrink: 0,
+        backgroundColor: COLOR_FOOTER_BG, display: "flex", alignItems: "flex-end",
+        padding: footerPadV + "px " + footerSidePad + "px", gap: footerGap,
       }}>
-        <svg width={Math.round(32 * scale)} height={Math.round(32 * scale)} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+        {/* Plus */}
+        <svg width={plusSize} height={plusSize} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginBottom: Math.round((pillMinHeight - plusSize) / 2) }}>
           <path d="M12 5v14M5 12h14" stroke={COLOR_ICON} strokeWidth="2" strokeLinecap="round" />
         </svg>
 
+        {/* Input pill with sticker inside */}
         <div style={{
-          flex: 1, height: Math.round(52 * scale), borderRadius: Math.round(26 * scale),
-          backgroundColor: COLOR_INPUT_BG, display: "flex", alignItems: "center",
-          padding: "0 " + Math.round(18 * scale) + "px", overflow: "hidden",
-          gap: Math.round(10 * scale),
+          flex: 1, minHeight: pillMinHeight, borderRadius: Math.round(26 * scale),
+          backgroundColor: COLOR_INPUT_BG, display: "flex", alignItems: "flex-end",
+          padding: pillPaddingV + "px " + pillPaddingH + "px",
+          gap: pillGap,
         }}>
-          <div style={{ flex: 1, overflow: "hidden", whiteSpace: "nowrap" }}>
+          <div style={{ flex: 1, overflow: "hidden", wordBreak: "break-word", whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
             {typingText !== null ? (
               <span style={{ color: COLOR_TEXT, fontSize }}>
                 {renderTextWithEmoji(typingText, fontSize)}
@@ -362,29 +394,47 @@ export const MyAnimation = () => {
               </span>
             ) : null}
           </div>
-          <svg width={Math.round(26 * scale)} height={Math.round(26 * scale)} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+          <svg width={stickerSize} height={stickerSize} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginBottom: Math.round(4 * scale) }}>
             <path d="M4 4h16v10l-6 6H4z" stroke={COLOR_ICON} strokeWidth="1.5" strokeLinejoin="round" />
             <path d="M14 20v-6h6" stroke={COLOR_ICON} strokeWidth="1.5" strokeLinejoin="round" />
           </svg>
         </div>
 
-        <svg width={Math.round(30 * scale)} height={Math.round(30 * scale)} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-          <circle cx="12" cy="12" r="10" stroke={COLOR_ICON} strokeWidth="1.5" />
-          <text x="12" y="17" fontSize="13" fill={COLOR_ICON} textAnchor="middle" fontFamily={FONT} fontWeight="500">\u20B9</text>
-        </svg>
+        {typingText !== null ? (
+          <div style={{
+            width: pillMinHeight, height: pillMinHeight, borderRadius: "50%",
+            backgroundColor: COLOR_GREEN, display: "flex", alignItems: "center", justifyContent: "center",
+            flexShrink: 0,
+          }}>
+            <svg width={Math.round(pillMinHeight * 0.55)} height={Math.round(pillMinHeight * 0.55)} viewBox="0 0 24 24" fill="none" style={{ marginLeft: Math.round(2 * scale) }}>
+              <path d="M3 20.5V3.5l18 8.5-18 8.5z" fill="#fff" />
+            </svg>
+          </div>
+        ) : (
+          <>
+            {/* Rupee */}
+            <svg width={rupeeSize} height={rupeeSize} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginBottom: Math.round((pillMinHeight - rupeeSize) / 2) }}>
+              <circle cx="12" cy="12" r="10" stroke={COLOR_ICON} strokeWidth="1.5" />
+              <text x="12" y="17" fontSize="13" fill={COLOR_ICON} textAnchor="middle" fontFamily={FONT} fontWeight="500">₹</text>
+            </svg>
 
-        <svg width={Math.round(30 * scale)} height={Math.round(30 * scale)} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-          <rect x="3" y="7" width="18" height="13" rx="2" stroke={COLOR_ICON} strokeWidth="1.5" />
-          <path d="M8 7l1.5-3h5L16 7" stroke={COLOR_ICON} strokeWidth="1.5" strokeLinejoin="round" />
-          <circle cx="12" cy="13.5" r="3.5" stroke={COLOR_ICON} strokeWidth="1.5" />
-        </svg>
+            {/* Camera */}
+            <svg width={cameraSize} height={cameraSize} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginBottom: Math.round((pillMinHeight - cameraSize) / 2) }}>
+              <rect x="3" y="7" width="18" height="13" rx="2" stroke={COLOR_ICON} strokeWidth="1.5" />
+              <path d="M8 7l1.5-3h5L16 7" stroke={COLOR_ICON} strokeWidth="1.5" strokeLinejoin="round" />
+              <circle cx="12" cy="13.5" r="3.5" stroke={COLOR_ICON} strokeWidth="1.5" />
+            </svg>
 
-        <svg width={Math.round(26 * scale)} height={Math.round(26 * scale)} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-          <rect x="9" y="3" width="6" height="12" rx="3" stroke={COLOR_ICON} strokeWidth="1.5" />
-          <path d="M5 11a7 7 0 0 0 14 0" stroke={COLOR_ICON} strokeWidth="1.5" strokeLinecap="round" />
-          <line x1="12" y1="19" x2="12" y2="22" stroke={COLOR_ICON} strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
+            {/* Mic */}
+            <svg width={micSize} height={micSize} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginBottom: Math.round((pillMinHeight - micSize) / 2) }}>
+              <rect x="9" y="3" width="6" height="12" rx="3" stroke={COLOR_ICON} strokeWidth="1.5" />
+              <path d="M5 11a7 7 0 0 0 14 0" stroke={COLOR_ICON} strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="12" y1="19" x2="12" y2="22" stroke={COLOR_ICON} strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </>
+        )}
       </div>
     </AbsoluteFill>
   );
-};`;
+};
+`;

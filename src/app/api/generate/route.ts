@@ -665,7 +665,18 @@ The target aspect ratio is ${arConfig.id} (${arConfig.width}x${arConfig.height})
 
   // Load skill-specific content only for NEW skills (previously used skills are already in context)
   const skillContent = getCombinedSkillContent(newSkills as SkillName[]);
-  const hasTemplateSkill = detectedSkills.some((s) => s.startsWith("template-"));
+  // On follow-ups the prompt ("use this as profile pic") often won't re-trigger the template
+  // classifier. Include previously used skills AND the seed template's skill so template mode
+  // stays sticky across the conversation.
+  const seedSkill = seedTemplateId ? getSeedTemplateById(seedTemplateId)?.skill : undefined;
+  const activeSkills = Array.from(
+    new Set([
+      ...detectedSkills,
+      ...(previouslyUsedSkills as SkillName[]),
+      ...(seedSkill ? [seedSkill as SkillName] : []),
+    ]),
+  );
+  const hasTemplateSkill = activeSkills.some((s) => s.startsWith("template-"));
 
   // Upload + analyze attached images when template mode is active
   // Images may already be URLs (uploaded by frontend via presigned URL) or base64.
@@ -809,7 +820,7 @@ Focus ONLY on fixing the error. Do not make other changes.`;
 
       // If this session was started from a seed template, append guidance to preserve its structure.
       const seedTemplate = seedTemplateId ? getSeedTemplateById(seedTemplateId) : null;
-      const followUpSystemPrompt = seedTemplate
+      const baseFollowUpPrompt = seedTemplate
         ? `${FOLLOW_UP_SYSTEM_PROMPT}
 
 ## SEED TEMPLATE: ${seedTemplate.name}
@@ -817,6 +828,12 @@ This code was seeded from a curated template. Prefer targeted edits (type: "edit
 Preserve the template's overall structure, layout, and visual design. Modify only what the user explicitly asks for — typically the dynamic data (messages, text, timings, colors) rather than the component scaffolding.
 Only use full replacement if the user explicitly asks for a structural rewrite or a completely different design.`
         : FOLLOW_UP_SYSTEM_PROMPT;
+
+      // Include uploaded-image URL routing (CONTACT_AVATAR_URL, MESSAGES[].imageUrl, etc.)
+      // in the follow-up prompt so the model has concrete URLs to write into the code.
+      const followUpSystemPrompt = [baseFollowUpPrompt, templateImageContext]
+        .filter(Boolean)
+        .join("\n\n");
 
       // ---------------------------------------------------------------
       // Claude path: use native text editor tool via Anthropic API
@@ -832,6 +849,7 @@ Only use full replacement if the user explicitly asks for a structural rewrite o
           conversationContext,
           manualEditNotice,
           errorCorrectionNotice,
+          frameImages,
         });
 
         const responseData: GenerateResponse = {

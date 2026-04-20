@@ -62,11 +62,18 @@ function extractComponentBody(code: string): string {
   // Remove side-effect imports: import "...";
   cleaned = cleaned.replace(/import\s*["'][^"']+["'];?/g, "");
 
+  // Strip `export` from top-level declarations. Everything gets wrapped inside a function
+  // body below, where `export` is a syntax error. Helpers like `calculateMetadata` that
+  // real Remotion components often export are harmless as plain `const` here.
+  cleaned = cleaned.replace(/^(\s*)export\s+/gm, "$1");
+
   cleaned = cleaned.trim();
 
-  // Extract body from "export const MyAnimation = () => { ... };"
+  // Extract body from "const MyAnimation = () => { ... };" — greedy prefix picks the LAST
+  // zero-arg arrow component in the file, so helper arrow fns (e.g. `const computeTimeline
+  // = () => {...}`) defined above the main component don't get mistaken for it.
   const match = cleaned.match(
-    /^([\s\S]*?)export\s+const\s+\w+\s*=\s*\(\s*\)\s*=>\s*\{([\s\S]*)\};?\s*$/,
+    /^([\s\S]*)const\s+\w+\s*=\s*\(\s*\)\s*=>\s*\{([\s\S]*)\};?\s*$/,
   );
 
   if (match) {

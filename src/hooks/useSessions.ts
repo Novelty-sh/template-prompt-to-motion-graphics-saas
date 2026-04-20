@@ -89,5 +89,29 @@ export function useSessions() {
     [],
   );
 
-  return { sessions, isLoading, createSession, createSessionFromTemplate };
+  const renameSession = useCallback(
+    async (id: string, title: string): Promise<boolean> => {
+      const trimmed = title.trim();
+      if (!trimmed) return false;
+
+      setSessions((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, title: trimmed } : s)),
+      );
+
+      const { error } = await supabase
+        .from("sessions")
+        .update({ title: trimmed })
+        .eq("id", id);
+
+      if (error) {
+        console.error("Failed to rename session:", error);
+        loadSessions();
+        return false;
+      }
+      return true;
+    },
+    [],
+  );
+
+  return { sessions, isLoading, createSession, createSessionFromTemplate, renameSession };
 }

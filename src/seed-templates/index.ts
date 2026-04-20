@@ -11,6 +11,9 @@ export interface SeedTemplate {
   durationInFrames: number;
   code: string;
   defaultModel: string;
+  /** The matching skill name — used so follow-ups on this session stay in template mode even when
+   *  the prompt ("use this as profile pic") doesn't re-trigger the skill classifier. */
+  skill: string;
 }
 
 export const seedTemplates: SeedTemplate[] = [
@@ -25,6 +28,7 @@ export const seedTemplates: SeedTemplate[] = [
     durationInFrames: 300,
     code: whatsappChatLightCode,
     defaultModel: "bedrock:claude-sonnet-4-6",
+    skill: "template-whatsapp-chat-light",
   },
   {
     id: "whatsapp-chat-dark",
@@ -37,6 +41,7 @@ export const seedTemplates: SeedTemplate[] = [
     durationInFrames: 300,
     code: whatsappChatDarkSeedCode,
     defaultModel: "bedrock:claude-sonnet-4-6",
+    skill: "template-whatsapp-chat",
   },
 ];
 

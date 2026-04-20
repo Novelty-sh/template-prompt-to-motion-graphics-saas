@@ -5,12 +5,12 @@ import { PageLayout } from "@/components/PageLayout";
 import { useSessions } from "@/hooks/useSessions";
 import { seedTemplates } from "@/seed-templates";
 import type { ModelId } from "@/types/generation";
-import { ArrowRight, Video } from "lucide-react";
+import { ArrowRight, Pencil, Video } from "lucide-react";
 import type { NextPage } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const PENDING_PROMPT_KEY = "session_pending_prompt";
 const PENDING_MODEL_KEY = "session_pending_model";
@@ -37,7 +37,35 @@ function formatRelativeDate(dateStr: string): string {
 const Home: NextPage = () => {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
-  const { sessions, isLoading, createSession, createSessionFromTemplate } = useSessions();
+  const { sessions, isLoading, createSession, createSessionFromTemplate, renameSession } = useSessions();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingId) editInputRef.current?.select();
+  }, [editingId]);
+
+  const startEditing = (id: string, currentTitle: string) => {
+    setEditingId(id);
+    setEditingValue(currentTitle || "");
+  };
+
+  const commitEdit = async () => {
+    if (!editingId) return;
+    const id = editingId;
+    const value = editingValue;
+    setEditingId(null);
+    const original = sessions.find((s) => s.id === id)?.title ?? "";
+    if (value.trim() && value.trim() !== original) {
+      await renameSession(id, value);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingValue("");
+  };
 
   const handleNavigate = async (
     prompt: string,
@@ -126,24 +154,68 @@ const Home: NextPage = () => {
               Recent Sessions
             </h2>
             <div className="flex flex-col gap-2">
-              {sessions.map((session) => (
-                <Link key={session.id} href={`/videos/${session.id}`}>
+              {sessions.map((session) => {
+                const isEditing = editingId === session.id;
+                const rowInner = (
                   <div className="flex items-center gap-3 p-3 bg-background-elevated rounded-lg border border-border hover:border-primary/40 transition-colors group">
                     <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
                       <Video className="w-4 h-4 text-muted-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground truncate">
-                        {session.title || "Untitled"}
-                      </p>
+                      {isEditing ? (
+                        <input
+                          ref={editInputRef}
+                          value={editingValue}
+                          onChange={(e) => setEditingValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              commitEdit();
+                            } else if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelEdit();
+                            }
+                          }}
+                          autoFocus
+                          className="w-full bg-background border border-border rounded px-2 py-1 text-sm text-foreground focus:outline-none focus:border-primary"
+                        />
+                      ) : (
+                        <p className="text-sm text-foreground truncate">
+                          {session.title || "Untitled"}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         {formatRelativeDate(session.created_at)}
                       </p>
                     </div>
-                    <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          startEditing(session.id, session.title || "");
+                        }}
+                        className="p-1.5 rounded hover:bg-muted text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                        aria-label="Rename session"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {!isEditing && (
+                      <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                    )}
                   </div>
-                </Link>
-              ))}
+                );
+                return isEditing ? (
+                  <div key={session.id}>{rowInner}</div>
+                ) : (
+                  <Link key={session.id} href={`/videos/${session.id}`}>
+                    {rowInner}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         )}
