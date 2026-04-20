@@ -306,6 +306,17 @@ function VideoPageContent() {
     [addAssistantMessage, markAsAiGenerated, saveSnapshot, prompt],
   );
 
+  const handleManualSave = useCallback(async () => {
+    const currentCode = codeRef.current;
+    if (!currentCode) return;
+    await saveSnapshot(currentCode, "Manual edit", "Manual edits saved", []);
+    addAssistantMessage("Saved your manual edits.", currentCode, {
+      skills: [],
+      editType: "full_replacement",
+    });
+    markAsAiGenerated();
+  }, [saveSnapshot, addAssistantMessage, markAsAiGenerated]);
+
   const handleUndo = useCallback(() => {
     const prevCode = undo();
     if (prevCode) {
@@ -396,6 +407,8 @@ function VideoPageContent() {
                 canRedo={canRedo}
                 onUndo={handleUndo}
                 onRedo={handleRedo}
+                hasUnsavedEdits={hasManualEdits}
+                onSave={handleManualSave}
               />
             }
             previewContent={

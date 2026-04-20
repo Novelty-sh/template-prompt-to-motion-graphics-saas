@@ -33,6 +33,8 @@ interface CodeEditorProps {
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
+  hasUnsavedEdits?: boolean;
+  onSave?: () => void | Promise<void>;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
@@ -44,6 +46,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   canRedo = false,
   onUndo,
   onRedo,
+  hasUnsavedEdits = false,
+  onSave,
 }) => {
   const monacoRef = useRef<Monaco | null>(null);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -286,6 +290,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           canRedo={canRedo}
           onUndo={onUndo}
           onRedo={onRedo}
+          hasUnsavedEdits={hasUnsavedEdits}
+          onSave={onSave}
         />
         <div className="flex-1 overflow-hidden relative">
           <StreamingOverlay
