@@ -36,6 +36,41 @@ function VideoPageContent() {
     examples[0]?.durationInFrames || 150,
   );
   const [fps, setFps] = useState(examples[0]?.fps || 30);
+
+  // Debounced persist of duration/fps. Called both from the Settings modal (user edits)
+  // and from the compiled component's __setDuration hook (auto-follow).
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistSettings = useCallback(
+    (patch: { duration_in_frames?: number; fps?: number }) => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = setTimeout(() => {
+        supabase.from("sessions").update(patch).eq("id", sessionId);
+      }, 400);
+    },
+    [sessionId],
+  );
+
+  const handleDurationChange = useCallback(
+    (n: number) => {
+      setDurationInFrames((prev) => {
+        if (prev === n) return prev;
+        persistSettings({ duration_in_frames: n });
+        return n;
+      });
+    },
+    [persistSettings],
+  );
+
+  const handleFpsChange = useCallback(
+    (n: number) => {
+      setFps((prev) => {
+        if (prev === n) return prev;
+        persistSettings({ fps: n });
+        return n;
+      });
+    },
+    [persistSettings],
+  );
   const [currentFrame, setCurrentFrame] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamPhase, setStreamPhase] = useState<StreamPhase>("idle");
@@ -131,6 +166,13 @@ function VideoPageContent() {
     onClearErrorCorrection: useCallback(() => setErrorCorrection(null), []),
   });
 
+  // Options passed to every compile — lets the component auto-report its natural
+  // duration back up to state via the __setDuration hook.
+  const compileOptions = useRef({
+    onReportDuration: (n: number) => handleDurationChange(n),
+  });
+  compileOptions.current.onReportDuration = (n: number) => handleDurationChange(n);
+
   // Sync refs
   useEffect(() => {
     codeRef.current = code;
@@ -141,7 +183,7 @@ function VideoPageContent() {
     isStreamingRef.current = isStreaming;
     if (wasStreaming && !isStreaming) {
       markAsAiGenerated();
-      compileCode(codeRef.current);
+      compileCode(codeRef.current, compileOptions.current);
     }
   }, [isStreaming, compileCode, markAsAiGenerated]);
 
@@ -170,7 +212,7 @@ function VideoPageContent() {
       // Restore previous session
       initializeFromSnapshots(snapshots);
       setCode(latestCode);
-      compileCode(latestCode);
+      compileCode(latestCode, compileOptions.current);
       setHasGeneratedOnce(true);
       return;
     }
@@ -220,7 +262,7 @@ function VideoPageContent() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (isStreamingRef.current) return;
       debounceRef.current = setTimeout(() => {
-        compileCode(newCode);
+        compileCode(newCode, compileOptions.current);
       }, 500);
     },
     [setCode, compileCode, markManualEdit, markAsUserEdited],
@@ -247,7 +289,7 @@ function VideoPageContent() {
     const prevCode = undo();
     if (prevCode) {
       setCode(prevCode);
-      compileCode(prevCode);
+      compileCode(prevCode, compileOptions.current);
     }
   }, [undo, setCode, compileCode]);
 
@@ -255,7 +297,7 @@ function VideoPageContent() {
     const nextCode = redo();
     if (nextCode) {
       setCode(nextCode);
-      compileCode(nextCode);
+      compileCode(nextCode, compileOptions.current);
     }
   }, [redo, setCode, compileCode]);
 
@@ -340,8 +382,8 @@ function VideoPageContent() {
                 Component={generationError ? null : Component}
                 durationInFrames={durationInFrames}
                 fps={fps}
-                onDurationChange={setDurationInFrames}
-                onFpsChange={setFps}
+                onDurationChange={handleDurationChange}
+                onFpsChange={handleFpsChange}
                 isCompiling={isCompiling}
                 isStreaming={isStreaming}
                 error={generationError?.message || codeError}

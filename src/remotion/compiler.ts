@@ -85,8 +85,13 @@ function extractComponentBody(code: string): string {
   return cleaned;
 }
 
+export interface CompileOptions {
+  /** Called when the compiled component reports its natural duration via __setDuration(n). */
+  onReportDuration?: (frames: number) => void;
+}
+
 // Standalone compile function for use outside React components
-export function compileCode(code: string): CompilationResult {
+export function compileCode(code: string, options: CompileOptions = {}): CompilationResult {
   if (!code?.trim()) {
     return { Component: null, error: "No code provided" };
   }
@@ -165,6 +170,8 @@ export function compileCode(code: string): CompilationResult {
       "renderTextWithEmoji",
       // Easing curves
       "Easing",
+      // Duration reporter — a hook the component calls to auto-follow its content length
+      "__setDuration",
       wrappedCode,
     );
 
@@ -217,6 +224,14 @@ export function compileCode(code: string): CompilationResult {
       renderTextWithEmoji,
       // Easing curves
       Easing,
+      // Duration reporter — fires once per value change via useEffect
+      (n: number) => {
+        useEffect(() => {
+          if (typeof n === "number" && n > 0 && options.onReportDuration) {
+            options.onReportDuration(Math.round(n));
+          }
+        }, [n]);
+      },
     );
 
     if (typeof Component !== "function") {

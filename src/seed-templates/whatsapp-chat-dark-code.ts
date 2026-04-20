@@ -1,6 +1,6 @@
 // To edit this template, paste real .tsx code between the String.raw backticks.
 // No escape juggling: \", \s, etc. are preserved as-is. Only ` and ${ need escaping.
-export const whatsappChatDarkSeedCode = String.raw`import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Img, Easing, CalculateMetadataFunction } from "remotion";
+export const whatsappChatDarkSeedCode = String.raw`import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Img, Easing } from "remotion";
 import { renderTextWithEmoji } from "./lib/twemoji";
 
 type PopConfig = {
@@ -85,14 +85,14 @@ const computeTimeline = () => {
   return { starts, totalFrames: acc };
 };
 
-export const calculateWhatsAppMetadata: CalculateMetadataFunction<Record<string, unknown>> = async ({ defaultProps }) => {
-  const { totalFrames } = computeTimeline();
-  return { durationInFrames: totalFrames + TAIL_HOLD_FRAMES, props: defaultProps };
-};
-
 export const WhatsApp = () => {
   const frame = useCurrentFrame();
-  const { width, height } = useVideoConfig();
+  const { width, height, fps } = useVideoConfig();
+
+  // Auto-follow: report actual content length (+5s buffer) so the Player duration
+  // tracks the conversation timeline rather than the template's default.
+  const { totalFrames } = computeTimeline();
+  __setDuration(totalFrames + TAIL_HOLD_FRAMES + 5 * fps);
 
   // ===== TEMPLATE CONSTANTS (WhatsApp dark theme) =====
   const WALLPAPER_URL = "https://videos.novelty.sh/motion-graphics/wallpapers/whatsapp-dark.jpg";

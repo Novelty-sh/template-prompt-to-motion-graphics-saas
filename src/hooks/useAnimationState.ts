@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   compileCode as compile,
   type CompilationResult,
+  type CompileOptions,
 } from "../remotion/compiler";
 
 export interface AnimationState {
@@ -22,10 +23,10 @@ export function useAnimationState(initialCode: string = "") {
   });
 
   // Compile code when it changes (with debouncing handled by caller)
-  const compileCode = useCallback((code: string) => {
+  const compileCode = useCallback((code: string, options?: CompileOptions) => {
     setState((prev) => ({ ...prev, isCompiling: true }));
 
-    const result: CompilationResult = compile(code);
+    const result: CompilationResult = compile(code, options);
 
     setState((prev) => ({
       ...prev,
