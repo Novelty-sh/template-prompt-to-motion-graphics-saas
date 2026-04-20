@@ -46,8 +46,9 @@ function VideoPageContent() {
   const persistSettings = useCallback(
     (patch: { duration_in_frames?: number; fps?: number; duration_override?: boolean }) => {
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-      persistTimerRef.current = setTimeout(() => {
-        supabase.from("sessions").update(patch).eq("id", sessionId);
+      persistTimerRef.current = setTimeout(async () => {
+        const { error } = await supabase.from("sessions").update(patch).eq("id", sessionId);
+        if (error) console.error("Failed to persist session settings:", error);
       }, 400);
     },
     [sessionId],
@@ -266,7 +267,7 @@ function VideoPageContent() {
   const handleModelChange = useCallback(
     (model: ModelId) => {
       setSessionModel(model);
-      supabase.from("sessions").update({ model }).eq("id", sessionId);
+      void supabase.from("sessions").update({ model }).eq("id", sessionId).then(() => undefined);
     },
     [sessionId],
   );
