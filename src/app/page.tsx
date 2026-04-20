@@ -5,7 +5,16 @@ import { PageLayout } from "@/components/PageLayout";
 import { useSessions } from "@/hooks/useSessions";
 import { seedTemplates } from "@/seed-templates";
 import type { ModelId } from "@/types/generation";
-import { ArrowRight, Pencil, Video } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { ArrowRight, Pencil, Trash2, Video } from "lucide-react";
 import type { NextPage } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -37,10 +46,12 @@ function formatRelativeDate(dateStr: string): string {
 const Home: NextPage = () => {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
-  const { sessions, isLoading, createSession, createSessionFromTemplate, renameSession } = useSessions();
+  const { sessions, isLoading, createSession, createSessionFromTemplate, renameSession, deleteSession } = useSessions();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const deleteTarget = sessions.find((s) => s.id === deleteTargetId);
 
   useEffect(() => {
     if (editingId) editInputRef.current?.select();
@@ -204,6 +215,20 @@ const Home: NextPage = () => {
                       </button>
                     )}
                     {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeleteTargetId(session.id);
+                        }}
+                        className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                        aria-label="Delete session"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {!isEditing && (
                       <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                     )}
                   </div>
@@ -220,6 +245,35 @@ const Home: NextPage = () => {
           </div>
         )}
       </div>
+
+      <Dialog open={deleteTargetId !== null} onOpenChange={(open) => { if (!open) setDeleteTargetId(null); }}>
+        <DialogContent className="sm:max-w-[425px] bg-background-elevated border-border text-foreground">
+          <DialogHeader>
+            <DialogTitle>Delete session?</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              {deleteTarget?.title
+                ? `"${deleteTarget.title}" will be hidden from your list. This can't be undone from the UI.`
+                : "This session will be hidden from your list."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTargetId(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (!deleteTargetId) return;
+                const id = deleteTargetId;
+                setDeleteTargetId(null);
+                await deleteSession(id);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 };

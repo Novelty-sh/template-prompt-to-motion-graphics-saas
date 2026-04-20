@@ -14,6 +14,7 @@ export interface Session {
   seed_template_id: string | null;
   fps: number | null;
   duration_in_frames: number | null;
+  deleted: boolean;
 }
 
 export interface CodeSnapshot {

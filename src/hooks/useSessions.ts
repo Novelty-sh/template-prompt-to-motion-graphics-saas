@@ -16,6 +16,7 @@ export function useSessions() {
     const { data } = await supabase
       .from("sessions")
       .select("*")
+      .eq("deleted", false)
       .order("created_at", { ascending: false })
       .limit(20);
 
@@ -113,5 +114,24 @@ export function useSessions() {
     [],
   );
 
-  return { sessions, isLoading, createSession, createSessionFromTemplate, renameSession };
+  const deleteSession = useCallback(
+    async (id: string): Promise<boolean> => {
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+
+      const { error } = await supabase
+        .from("sessions")
+        .update({ deleted: true })
+        .eq("id", id);
+
+      if (error) {
+        console.error("Failed to delete session:", error);
+        loadSessions();
+        return false;
+      }
+      return true;
+    },
+    [],
+  );
+
+  return { sessions, isLoading, createSession, createSessionFromTemplate, renameSession, deleteSession };
 }
