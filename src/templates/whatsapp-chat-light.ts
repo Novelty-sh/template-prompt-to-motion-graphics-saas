@@ -24,6 +24,9 @@ export const MyAnimation = () => {
   // ===== END DYNAMIC DATA =====
 
   // ===== TEMPLATE CONSTANTS (WhatsApp light theme) =====
+  // DO NOT CHANGE WALLPAPER_URL — it is the official WhatsApp light doodle background.
+  // Attached image URLs belong in CONTACT_AVATAR_URL or MESSAGES[].imageUrl, never here.
+  const WALLPAPER_URL = "https://videos.novelty.sh/motion-graphics/wallpapers/whatsapp-light.png";
   const COLOR_BG = "#efeae2";
   const COLOR_SENT_BUBBLE = "#d9fdd3";
   const COLOR_RECEIVED_BUBBLE = "#ffffff";
@@ -39,7 +42,18 @@ export const MyAnimation = () => {
   const HEADER_HEIGHT = Math.round(height * 0.07);
   const INPUT_HEIGHT = Math.round(height * 0.075);
   const BUBBLE_RADIUS = 7.5;
-  const STAGGER_DELAY = 35;
+  // Sent-message typing (user types into input box): duration scales with sentence length,
+  // but clamps so very short msgs are still visible and very long msgs don't drag. Full
+  // sentence is ALWAYS displayed before the bubble appears.
+  const TYPING_CHAR_SPEED = 1.2;
+  const MIN_TYPING_DURATION = 12;
+  const MAX_TYPING_DURATION = 48;
+  const TYPED_HOLD_DURATION = 4;
+  // Received-message typing dots: duration scales with the *incoming* message length.
+  const DOTS_CHAR_SPEED = 0.5;
+  const MIN_DOTS_DURATION = 15;
+  const MAX_DOTS_DURATION = 45;
+  const POST_MESSAGE_GAP = 6;
   const FADE_DURATION = 15;
   // ===== END TEMPLATE CONSTANTS =====
 
@@ -50,6 +64,48 @@ export const MyAnimation = () => {
 
   // Get initials from contact name
   const initials = CONTACT_NAME.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+
+  // ===== CHAT TIMELINE =====
+  // Each sent message is preceded by text typing into the input box; each received message
+  // is preceded by a typing-dots indicator. Durations scale with the message's character
+  // length so realistic pacing is preserved: longer message → longer wait.
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  // Number of frames used to animate characters into the input (excludes the post-typing hold)
+  const getSentActiveFrames = (m) => clamp(Math.ceil(m.text.length * TYPING_CHAR_SPEED), MIN_TYPING_DURATION, MAX_TYPING_DURATION);
+  // Total gap before a message's bubble appears (includes hold for sent msgs)
+  const getPreBubbleDur = (m) => m.sent
+    ? getSentActiveFrames(m) + TYPED_HOLD_DURATION
+    : clamp(Math.ceil(m.text.length * DOTS_CHAR_SPEED), MIN_DOTS_DURATION, MAX_DOTS_DURATION);
+  const messageStartFrames = [];
+  {
+    let acc = 0;
+    for (let i = 0; i < MESSAGES.length; i++) {
+      acc += getPreBubbleDur(MESSAGES[i]) + POST_MESSAGE_GAP;
+      messageStartFrames.push(acc);
+    }
+  }
+
+  // Find the text currently being typed into the input (null = show placeholder)
+  // Full sentence is always displayed by the end of the active frames, then held briefly,
+  // then the bubble appears and the input clears.
+  let typingText = null;
+  for (let i = 0; i < MESSAGES.length; i++) {
+    const m = MESSAGES[i];
+    if (!m.sent) continue;
+    const msgStart = messageStartFrames[i];
+    const preBubble = getPreBubbleDur(m);
+    const typingStart = msgStart - preBubble;
+    if (frame >= typingStart && frame < msgStart) {
+      const chars = Array.from(m.text);
+      const activeFrames = getSentActiveFrames(m);
+      const localFrame = frame - typingStart;
+      const charCount = localFrame >= activeFrames
+        ? chars.length
+        : Math.max(0, Math.min(chars.length, Math.floor((localFrame / activeFrames) * chars.length)));
+      typingText = chars.slice(0, charCount).join("");
+      break;
+    }
+  }
 
   // Check marks component
   const Checks = ({ status }) => {
@@ -180,12 +236,8 @@ export const MyAnimation = () => {
         position: "absolute", top: STATUS_BAR_HEIGHT + HEADER_HEIGHT, left: 0, right: 0, bottom: INPUT_HEIGHT,
         overflow: "hidden", backgroundColor: COLOR_BG,
       }}>
-        {/* Doodle pattern overlay */}
-        <div style={{
-          position: "absolute", inset: 0, zIndex: 0, opacity: 0.045,
-          backgroundImage: \`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cdefs%3E%3Cstyle%3Etext%7Bfont-size:18px%7D%3C/style%3E%3C/defs%3E%3Ctext x='10' y='25'%3E\u{1F4F1}%3C/text%3E%3Ctext x='70' y='60'%3E\u{1F4AC}%3C/text%3E%3Ctext x='140' y='30'%3E\u{1F60A}%3C/text%3E%3Ctext x='210' y='55'%3E\u{1F4DE}%3C/text%3E%3Ctext x='260' y='25'%3E\u{1F512}%3C/text%3E%3Ctext x='30' y='100'%3E\u{1F4F7}%3C/text%3E%3Ctext x='100' y='120'%3E\u{1F3A4}%3C/text%3E%3Ctext x='180' y='95'%3E\u{23F0}%3C/text%3E%3Ctext x='240' y='110'%3E\u{1F4CD}%3C/text%3E%3Ctext x='50' y='170'%3E\u{1F3B5}%3C/text%3E%3Ctext x='130' y='185'%3E\u{1F4CE}%3C/text%3E%3Ctext x='200' y='160'%3E\u{1F4A1}%3C/text%3E%3Ctext x='270' y='180'%3E\u{2709}%3C/text%3E%3C/svg%3E")\`,
-          backgroundSize: "300px 300px",
-        }} />
+        {/* WhatsApp light wallpaper — DO NOT change WALLPAPER_URL */}
+        <Img src={WALLPAPER_URL} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 }} />
 
         <div style={{ position: "relative", zIndex: 1, padding: \`\${Math.round(8 * scale)}px \${padding}px \${Math.round(10 * scale)}px\`, display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%" }}>
 
@@ -211,11 +263,12 @@ export const MyAnimation = () => {
           {/* Messages */}
           {MESSAGES.map((msg, i) => {
             const prevSame = i > 0 && MESSAGES[i - 1].sent === msg.sent;
-            const msgStartFrame = i * STAGGER_DELAY;
+            const msgStartFrame = messageStartFrames[i];
             const isReceived = !msg.sent;
 
-            // Typing indicator before received messages
-            const showTyping = isReceived && frame >= msgStartFrame - 20 && frame < msgStartFrame;
+            // Typing indicator before received messages (duration scales with msg length)
+            const dotsDur = getPreBubbleDur(msg);
+            const showTyping = isReceived && frame >= msgStartFrame - dotsDur && frame < msgStartFrame;
 
             const opacity = interpolate(frame - msgStartFrame, [0, FADE_DURATION], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
             const bounce = spring({ frame: Math.max(0, frame - msgStartFrame), fps, config: { damping: 14, stiffness: 180 } });
@@ -223,7 +276,7 @@ export const MyAnimation = () => {
 
             return (
               <div key={i}>
-                {showTyping && <TypingIndicator startFrame={msgStartFrame - 20} />}
+                {showTyping && <TypingIndicator startFrame={msgStartFrame - dotsDur} />}
                 <div style={{
                   display: "flex", justifyContent: msg.sent ? "flex-end" : "flex-start",
                   marginTop: prevSame ? Math.round(2 * scale) : Math.round(6 * scale),
@@ -298,8 +351,15 @@ export const MyAnimation = () => {
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
             </svg>
           </div>
-          {/* Placeholder text */}
-          <div style={{ flex: 1, fontSize: Math.round(16.5 * scale), color: COLOR_ICON, padding: \`\${Math.round(8 * scale)}px 0\` }}>Message</div>
+          {/* Placeholder / live typing text */}
+          <div style={{
+            flex: 1, fontSize: Math.round(16.5 * scale),
+            color: typingText !== null ? COLOR_TEXT : COLOR_ICON,
+            padding: \`\${Math.round(8 * scale)}px 0\`,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip",
+          }}>
+            {typingText !== null ? renderTextWithEmoji(typingText, Math.round(16.5 * scale)) : "Message"}
+          </div>
           {/* Attach icon */}
           <div style={{ width: Math.round(36 * scale), height: Math.round(36 * scale), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <svg width={Math.round(22 * scale)} height={Math.round(22 * scale)} viewBox="0 0 24 24" fill={COLOR_ICON} style={{ transform: "rotate(45deg)" }}>

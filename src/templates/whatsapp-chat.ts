@@ -22,6 +22,9 @@ export const MyAnimation = () => {
   // ===== END DYNAMIC DATA =====
 
   // ===== TEMPLATE CONSTANTS (WhatsApp dark theme) =====
+  // DO NOT CHANGE WALLPAPER_URL — it is the official WhatsApp dark doodle background.
+  // Attached image URLs belong in CONTACT_AVATAR_URL or MESSAGES[].imageUrl, never here.
+  const WALLPAPER_URL = "https://videos.novelty.sh/motion-graphics/wallpapers/whatsapp-dark.jpg";
   const COLOR_BG = "#0b141a";
   const COLOR_HEADER = "#1f2c34";
   const COLOR_SENT_BUBBLE = "#005c4b";
@@ -36,7 +39,18 @@ export const MyAnimation = () => {
   const INPUT_HEIGHT = Math.round(height * 0.07);
   const BUBBLE_MAX_WIDTH = "75%";
   const BUBBLE_RADIUS = 12;
-  const STAGGER_DELAY = 35;
+  // Sent-message typing (user types into input box): duration scales with sentence length,
+  // but clamps so very short msgs are still visible and very long msgs don't drag. Full
+  // sentence is ALWAYS displayed before the bubble appears.
+  const TYPING_CHAR_SPEED = 1.2;
+  const MIN_TYPING_DURATION = 12;
+  const MAX_TYPING_DURATION = 48;
+  const TYPED_HOLD_DURATION = 4;
+  // Received-message typing dots: duration scales with the *incoming* message length.
+  const DOTS_CHAR_SPEED = 0.5;
+  const MIN_DOTS_DURATION = 15;
+  const MAX_DOTS_DURATION = 45;
+  const POST_MESSAGE_GAP = 6;
   const FADE_DURATION = 15;
   // ===== END TEMPLATE CONSTANTS =====
 
@@ -47,6 +61,48 @@ export const MyAnimation = () => {
 
   // Get initials from contact name
   const initials = CONTACT_NAME.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+
+  // ===== CHAT TIMELINE =====
+  // Each sent message is preceded by text typing into the input box; each received message
+  // is preceded by a typing-dots indicator. Durations scale with the message's character
+  // length so realistic pacing is preserved: longer message → longer wait.
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  // Number of frames used to animate characters into the input (excludes the post-typing hold)
+  const getSentActiveFrames = (m) => clamp(Math.ceil(m.text.length * TYPING_CHAR_SPEED), MIN_TYPING_DURATION, MAX_TYPING_DURATION);
+  // Total gap before a message's bubble appears (includes hold for sent msgs)
+  const getPreBubbleDur = (m) => m.sent
+    ? getSentActiveFrames(m) + TYPED_HOLD_DURATION
+    : clamp(Math.ceil(m.text.length * DOTS_CHAR_SPEED), MIN_DOTS_DURATION, MAX_DOTS_DURATION);
+  const messageStartFrames = [];
+  {
+    let acc = 0;
+    for (let i = 0; i < MESSAGES.length; i++) {
+      acc += getPreBubbleDur(MESSAGES[i]) + POST_MESSAGE_GAP;
+      messageStartFrames.push(acc);
+    }
+  }
+
+  // Find the text currently being typed into the input (null = show placeholder)
+  // Full sentence is always displayed by the end of the active frames, then held briefly,
+  // then the bubble appears and the input clears.
+  let typingText = null;
+  for (let i = 0; i < MESSAGES.length; i++) {
+    const m = MESSAGES[i];
+    if (!m.sent) continue;
+    const msgStart = messageStartFrames[i];
+    const preBubble = getPreBubbleDur(m);
+    const typingStart = msgStart - preBubble;
+    if (frame >= typingStart && frame < msgStart) {
+      const chars = Array.from(m.text);
+      const activeFrames = getSentActiveFrames(m);
+      const localFrame = frame - typingStart;
+      const charCount = localFrame >= activeFrames
+        ? chars.length
+        : Math.max(0, Math.min(chars.length, Math.floor((localFrame / activeFrames) * chars.length)));
+      typingText = chars.slice(0, charCount).join("");
+      break;
+    }
+  }
 
   // Typing indicator component
   const TypingIndicator = ({ startFrame }) => {
@@ -71,8 +127,8 @@ export const MyAnimation = () => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLOR_BG, fontFamily: FONT, overflow: "hidden" }}>
-      {/* Wallpaper subtle pattern */}
-      <AbsoluteFill style={{ opacity: 0.03, backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)", backgroundSize: \`\${Math.round(24 * scale)}px \${Math.round(24 * scale)}px\` }} />
+      {/* WhatsApp dark wallpaper (doodle pattern) — DO NOT change WALLPAPER_URL */}
+      <Img src={WALLPAPER_URL} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
 
       {/* Header */}
       <div style={{
@@ -125,11 +181,12 @@ export const MyAnimation = () => {
         overflow: "hidden",
       }}>
         {MESSAGES.map((msg, i) => {
-          const msgStartFrame = i * STAGGER_DELAY;
+          const msgStartFrame = messageStartFrames[i];
           const isReceived = !msg.sent;
 
-          // Show typing indicator before received messages
-          const showTyping = isReceived && frame >= msgStartFrame - 20 && frame < msgStartFrame;
+          // Show typing indicator before received messages (duration scales with msg length)
+          const dotsDur = getPreBubbleDur(msg);
+          const showTyping = isReceived && frame >= msgStartFrame - dotsDur && frame < msgStartFrame;
 
           const opacity = interpolate(frame - msgStartFrame, [0, FADE_DURATION], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
           const slideX = interpolate(opacity, [0, 1], [msg.sent ? 30 : -30, 0]);
@@ -138,7 +195,7 @@ export const MyAnimation = () => {
 
           return (
             <div key={i}>
-              {showTyping && <TypingIndicator startFrame={msgStartFrame - 20} />}
+              {showTyping && <TypingIndicator startFrame={msgStartFrame - dotsDur} />}
               <div style={{
                 display: "flex", justifyContent: msg.sent ? "flex-end" : "flex-start",
                 marginBottom: Math.round(6 * scale), opacity,
@@ -194,9 +251,15 @@ export const MyAnimation = () => {
         <div style={{
           flex: 1, height: Math.round(36 * scale), borderRadius: Math.round(20 * scale),
           backgroundColor: COLOR_INPUT_BG, display: "flex", alignItems: "center",
-          padding: \`0 \${Math.round(12 * scale)}px\`,
+          padding: \`0 \${Math.round(12 * scale)}px\`, overflow: "hidden",
         }}>
-          <span style={{ color: COLOR_ICON, fontSize }}>Type a message</span>
+          {typingText !== null ? (
+            <span style={{ color: COLOR_TEXT, fontSize, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip" }}>
+              {renderTextWithEmoji(typingText, fontSize)}
+            </span>
+          ) : (
+            <span style={{ color: COLOR_ICON, fontSize }}>Type a message</span>
+          )}
         </div>
 
         {/* Mic icon */}
