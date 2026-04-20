@@ -49,8 +49,8 @@ An auto-correction loop (max 3 attempts) re-prompts on compilation errors.
 - **API route** (`src/app/api/generate/route.ts`): Orchestrates validation, skill detection, image analysis, and code generation. Initial generation uses Vercel AI SDK `streamText`; follow-up edits branch by provider (Claude → text editor tool, OpenAI → structured output).
 - **Text editor** (`src/lib/anthropic-editor.ts`): Wraps Claude's native `str_replace_based_edit_tool` in a multi-turn loop. Handles `view`, `str_replace`, `create`, `insert` commands against in-memory code via direct Anthropic API.
 - **Local skills** (`src/skills/index.ts`): Reads markdown skill files and example code, combines them into system prompt text. A classifier detects relevant skills per prompt.
-- **Compiler** (`src/remotion/compiler.ts`): Strips imports, extracts component body, transpiles with Babel, executes via `new Function()` with all Remotion APIs injected as arguments.
-- **Session model**: Each session (`/videos/[sessionId]`) stores a linear history of code snapshots in Supabase with undo/redo via `sequence_number`.
+- **Compiler** (`src/remotion/compiler.ts`): Strips imports, extracts component body, transpiles with Babel, executes via `new Function()` with all Remotion APIs injected as arguments. Also strips top-level `export` keywords (so templates with multiple exports like `calculateMetadata` don't break when wrapped in a function body) and picks the **last** zero-arg arrow as the main component — so helper arrow fns with empty params must appear above the main one.
+- **Session model**: Each session (`/videos/[sessionId]`) stores a linear history of code snapshots in Supabase with undo/redo via `sequence_number`. Manual edits do **not** auto-snapshot — the editor header has a Save button (active when `hasManualEdits`) that pushes a snapshot and posts a "Saved your manual edits." turn to the sidebar.
 
 #### Unused / staged code (not wired into route)
 - `src/lib/anthropic.ts`: Anthropic client with Agent Skills beta headers. Prepared for future Agent Skills integration.
@@ -69,18 +69,34 @@ Skills are local markdown files in `src/skills/` and example code in `src/exampl
 ### Compilation & Runtime Injection
 
 Generated code is compiled client-side. The compiler injects these APIs as function arguments (no real imports at runtime):
-- **Remotion core**: `AbsoluteFill`, `Sequence`, `Img`, `useCurrentFrame`, `useVideoConfig`, `spring`, `interpolate`
+- **Remotion core**: `AbsoluteFill`, `Sequence`, `Img`, `useCurrentFrame`, `useVideoConfig`, `spring`, `interpolate`, `Easing`
 - **Shapes**: `Rect`, `Circle`, `Triangle`, `Star`, `Polygon`, `Ellipse`, `Heart`, `Pie` (plus `make*` path variants)
 - **Transitions**: `TransitionSeries`, `linearTiming`, `springTiming`, `fade`, `slide`, `wipe`, `flip`, `clockWipe`
 - **3D**: `ThreeCanvas`, `THREE`
 - **Emoji**: `Emoji`, `getEmojiUrl`, `renderTextWithEmoji` (Twemoji — consistent cross-platform emoji rendering via CDN SVGs)
 - **Other**: `Lottie`, `React`, `useState`, `useEffect`, `useMemo`, `useRef`
+- **Duration auto-follow**: `__setDuration(frames)` — compiler-injected hook. Generated code calls it with its natural length (e.g. `__setDuration(totalFrames + 5 * fps)`). Internally defers via `useEffect` and fires `CompileOptions.onReportDuration`, which the session page wires to persist `duration_in_frames` to Supabase. Skipped when `sessions.duration_override = true` so the user's Settings-modal choice survives re-renders. `calculateMetadata`-style exports do **not** work — our in-browser pipeline never runs Remotion's composition-setup hooks.
 
 When adding new APIs to generated code, they must be added in three places: the compiler's `new Function()` parameter list, the corresponding argument in the call, and the system prompt guidance.
 
 ### Data Model (Supabase)
 
-Two tables — `sessions` (id, title, model, aspect_ratio) and `code_snapshots` (session_id, code, prompt, summary, skills[], sequence_number). Anonymous access, no auth required.
+Two tables. Anonymous access, no auth required. Migrations in `supabase/migrations/`.
+
+- **sessions**: `id, created_at, title, model, aspect_ratio, fps, duration_in_frames, seed_template_id, duration_override, deleted`
+  - `duration_override`: set true when the user edits duration in the Settings modal; blocks `__setDuration` from overwriting.
+  - `deleted`: soft-delete flag; home page filters `deleted=false`.
+  - `seed_template_id`: links a session to the seed template it was created from (drives sticky template-mode on follow-ups).
+- **code_snapshots**: `id, session_id, code, prompt, summary, skills[], sequence_number, created_at`
+
+### Seed Templates
+
+Sessions can be started from a pre-built template (WhatsApp light/dark etc.) so the user lands on a working animation and only chats to tweak. Registry at `src/seed-templates/index.ts`; template code strings live next to it (e.g. `whatsapp-chat-dark-code.ts`).
+
+- **Wrap the code in `` String.raw`...` ``**, not a plain backtick. `String.raw` keeps `\"`, `\s`, `\u{...}` literal so you can paste real `.tsx` into the file without escape juggling. Only `` ` `` and `${` still need escaping.
+- Every `SeedTemplate` declares a matching `skill` (e.g. `template-whatsapp-chat-light`). The route merges this into `activeSkills` whenever `seedTemplateId` is set — keeps template mode sticky across follow-ups even when the classifier wouldn't re-detect it from a prompt like "use this as profile pic".
+- Inside the template's component, call `__setDuration(totalFrames + 5 * fps)` so the Player auto-follows the animation length.
+- Top-level declarations can be any mix of exports / consts / types — the compiler strips `export` before wrapping. The main component must be a zero-arg arrow (`export const WhatsApp = () => {...};`) placed **last**, because the compiler picks the last zero-arg arrow it finds.
 
 ### AI Providers
 
@@ -118,6 +134,12 @@ This applies to changes in:
 - `config.mjs` (Lambda config)
 
 **Import rule for `src/remotion/` files**: The Lambda bundler uses its own webpack config (not Next.js), so `@/` path aliases do NOT resolve. Always use **relative imports** (e.g. `../lib/twemoji`) in files under `src/remotion/`. Preview (Next.js dev server) resolves `@/` fine, but Lambda rendering will fail without relative paths.
+
+## Gotchas
+
+- **supabase-js v2 builders are thenables — you must `await` or `.then()` them.** `supabase.from("x").update(...).eq(...)` without a subscriber silently drops the request. Fire-and-forget works only if you explicitly subscribe (e.g. `void supabase...then(() => undefined)`). This bit the settings-persist path once already.
+- **`scripts/**` is excluded from tsconfig** because `scripts/upload-wallpapers.ts` uses Node `Buffer` as a fetch body, which newer `@types/node` no longer accepts as `BodyInit`. Those scripts are local dev tools, not bundled into the Next.js app — no reason for `next build` to type-check them. Keep new one-off scripts in `scripts/` too.
+- **Dev server caches `src/remotion/compiler.ts`** — if you change injected APIs and the preview shows "X is not defined", kill the dev server and `rm -rf .next` before restarting.
 
 ## Environment Variables
 
